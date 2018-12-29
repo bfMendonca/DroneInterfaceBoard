@@ -4,6 +4,8 @@
 /*--- Includes. ---*/
 #include "stm32f0xx_hal.h"
 
+#include <string.h>
+#include <math.h>
 
 /**
  * This file was originally got from http://www.cs.cmu.edu/~cga/arduino/MPU6500.h.
@@ -36,12 +38,11 @@
 #define MPU6500_RA_CONFIG           0x1A
 #define MPU6500_RA_GYRO_CONFIG      0x1B
 #define MPU6500_RA_ACCEL_CONFIG     0x1C
-#define MPU6500_RA_FF_THR           0x1D
-#define MPU6500_RA_FF_DUR           0x1E
+#define MPU6500_RA_ACCEL_CONFIG_2   0x1D
+#define MPU6500_LP_ACCEL_ODR        0x1E
+
 #define MPU6500_RA_MOT_THR          0x1F
-#define MPU6500_RA_MOT_DUR          0x20
-#define MPU6500_RA_ZRMOT_THR        0x21
-#define MPU6500_RA_ZRMOT_DUR        0x22
+
 #define MPU6500_RA_FIFO_EN          0x23
 #define MPU6500_RA_I2C_MST_CTRL     0x24
 #define MPU6500_RA_I2C_SLV0_ADDR    0x25
@@ -157,13 +158,15 @@
 #define MPU6500_DLPF_BW_10          0x05
 #define MPU6500_DLPF_BW_5           0x06
 
+#define MPU6500_GCONFIG_FCHOICE_B_BIT 		1
+#define MPU6500_GCONFIG_FCHOICE_B_LENGTH 	2
+
 #define MPU6500_GCONFIG_FS_SEL_BIT      4
 #define MPU6500_GCONFIG_FS_SEL_LENGTH   2
 
-#define MPU6500_GYRO_FS_250         0x00
-#define MPU6500_GYRO_FS_500         0x01
-#define MPU6500_GYRO_FS_1000        0x02
-#define MPU6500_GYRO_FS_2000        0x03
+#define MPU6500_ACONFIG_FCHOICE_B_BIT 	3
+#define MPU6500_ACONFIG_DLPF_BIT		2
+#define MPU6500_ACONFIG_DLPF_LENGTH		3
 
 #define MPU6500_ACONFIG_XA_ST_BIT           7
 #define MPU6500_ACONFIG_YA_ST_BIT           6
@@ -172,11 +175,6 @@
 #define MPU6500_ACONFIG_AFS_SEL_LENGTH      2
 #define MPU6500_ACONFIG_ACCEL_HPF_BIT       2
 #define MPU6500_ACONFIG_ACCEL_HPF_LENGTH    3
-
-#define MPU6500_ACCEL_FS_2          0x00
-#define MPU6500_ACCEL_FS_4          0x01
-#define MPU6500_ACCEL_FS_8          0x02
-#define MPU6500_ACCEL_FS_16         0x03
 
 #define MPU6500_DHPF_RESET          0x00
 #define MPU6500_DHPF_5              0x01
@@ -376,79 +374,194 @@
 #define MPU6500_RA_SELF_TEST_X 0x00
 #define MPU6500_RA_SELF_TEST_Y 0x00
 #define MPU6500_RA_SELF_TEST_Z 0x00
-#define MPU6500_RA_SELF_TEST_A
-
-
-
+#define MPU6500_RA_SELF_TEST_A 0x00
 
 /*-- This section is dedicated for some Setups. --*/
 #define BUFFER_SIZE 30
 
 
+
 namespace Sensors {
+
+template< typename Targ >
+class ThreeAxisReading {
+public:
+	ThreeAxisReading() :
+		m_x( Targ() ),
+		m_y( Targ() ),
+		m_z( Targ() ) {	}
+
+	ThreeAxisReading( const Targ &x, const Targ &y, const Targ &z ) :
+		m_x( x ),
+		m_y( y ),
+		m_z( z ) { }
+
+	inline const Targ & x() const { return m_x; };
+	inline const Targ & y() const { return m_y; };
+	inline const Targ & z() const { return m_z; };
+
+	inline void setX( const Targ & x ) { m_x = x; };
+	inline void setY( const Targ & y ) { m_y = y; };
+	inline void setZ( const Targ & z ) { m_z = z; };
+
+	inline Targ & rx() { return m_x; };
+	inline Targ & ry() { return m_y; };
+	inline Targ & rz() { return m_z; };
+
+
+private:
+	Targ m_x, m_y, m_z;
+};
+
+template< typename Targ >
+class ThreeAxisReadingsStamped : public ThreeAxisReading< Targ > {
+public:
+	ThreeAxisReadingsStamped() : ThreeAxisReading< Targ >(),
+			m_timeStamp() { }
+
+	ThreeAxisReadingsStamped( uint64_t initialTs ) : ThreeAxisReading< Targ >(),
+			m_timeStamp( initialTs ) { }
+
+	ThreeAxisReadingsStamped( const Targ &x, const Targ &y, const Targ &z, uint64_t initialTs = 0) : ThreeAxisReading< Targ >( x, y, z),
+			m_timeStamp( initialTs ) { }
+
+	inline void setTimeStamp( uint64_t timeStamp ) {
+		m_timeStamp = timeStamp;
+	}
+
+	inline const uint64_t & timeStamp() const { return m_timeStamp; };
+
+private:
+	uint64_t m_timeStamp;
+};
+
+template< typename Targ >
+class SingleValueReadingStamped {
+public:
+	SingleValueReadingStamped( ) :
+		m_value( Targ() ),
+		m_timeStamp( 0 ) { }
+
+	SingleValueReadingStamped( const Targ & value, uint64_t timeStamp  = 0 ) :
+		m_value( value ),
+		m_timeStamp( timeStamp ) { }
+
+	inline void setTimeStamp( uint64_t timeStamp ) {
+		m_timeStamp = timeStamp;
+	}
+
+	inline const uint64_t & timeStamp() const { return m_timeStamp; };
+
+	inline Targ & rValue() { return m_value; };
+
+	inline void setValue( const Targ & value ) {
+		m_value = value;
+	}
+
+	inline const Targ & value() const { return m_value; };
+
+private:
+	Targ m_value;
+	uint64_t m_timeStamp;
+};
 
 class MPU6500 {
 
 public:
+	enum State {
+		UNKNOWN = 0x00,
+		DISCONNECTED = 0x01,
+		NOT_INITIALIZED = 0x02,
+		CONFIG_MODE = 0x03,
+		RUNNING = 0x04,
+		SELF_TEST = 0x05,	//Self testing, although do not discriminate between accel or gyro self test
+		ERROR = 0xFF
+	};
+
+	enum AccelRange {
+		SCALE_2_G = 0x00,
+		SCALE_4_G = 0x01,
+		SCALE_8_G = 0x02,
+		SCALE_16_G = 0x03
+	};
+
+	enum AccelFChoiceB {
+		ACCEL_USE_LPF = 0x00,					//Route through the LPF. FS will be choose according the SMPLR_RATE_DIVIDER
+		ACCEL_BYPASS_LPF = 0x01				//Bypass the LPF and set the Bandwidth to 1130 KHz and FS 4 Khz
+	};
+
+	enum AccelLPF {
+		ACCEL_LPF_460_HZ = 0x00,
+		ACCEL_LPF_184_HZ = 0x01,
+		ACCEL_LPF_92_HZ = 0x02,
+		ACCEL_LPF_41_HZ = 0x03,
+		ACCEL_LPF_20_HZ = 0x04,
+		ACCEL_LPF_10_HZ = 0x05,
+		ACCEL_LPF_5_HZ = 0x06,
+		ACCEL_LPF_460_HZ_2 = 0x07
+	};
+
+	enum GyroRange {
+		SCALE_250_DPS = 0x00,
+		SCALE_500_DPS = 0x01,
+		SCALE_1000_DPS = 0x02,
+		SCALE_2000_DPS = 0x03
+	};
+
+	enum GyroFChoiceB {
+		GYRO_USE_LPF = 0x00,					//Route through the LPF. The Bandwidth and FS will be choose according the LPF Setup
+		GYRO_BYPASS_LPF_BW_8800_HZ = 0x01,	//Bypass the LPF and set the Bandwidth to 8800 Hz and FS 32 KHz
+		GYRO_BYPASS_LPF_BW_3600_HZ = 0x02,	//Bypass the LPF and set the Bandwidth to 3600 Hz and FS 32 KHz
+	};
+
+	//These setup and FS Will depend upon the GyroFChoiceB
+	enum GyroLPF {
+		GYRO_LPF_250_HZ = 	0x00,	//FS 8 KHz, Delay 0.97 ms, SMPLRT_DIV not used
+		GYRO_LPF_184_HZ = 	0x01,	//FS 1 KHz, Delay 2.90 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_92_HZ = 	0x02,	//FS 1 KHz, Delay 3.90 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_41_HZ = 	0x03,	//FS 1 KHz, Delay 5.90 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_20_HZ = 	0x04,	//FS 1 KHz, Delay 9.90 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_10_HZ = 	0x05,	//FS 1 KHz, Delay 17.85 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_5_HZ = 		0x06,	//FS 1 KHz, Delay 33.48 ms, if SMPLRT_DIV = 0
+		GYRO_LPF_3600_HZ = 	0x07	//FS 8 KHz, Delay 0.17 ms, SMPLRT_DIV not used
+	};
+
 	MPU6500(  SPI_HandleTypeDef &spi, GPIO_TypeDef * csPort, uint16_t csPin );
 	virtual ~MPU6500();
 
-private:
-	/*-- Methods. --*/
-	inline void activateDevice() const {
-		HAL_GPIO_WritePin( m_csPort, m_csPin, GPIO_PIN_RESET );
+	friend void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+
+	void setGyroRateAndLPF( GyroFChoiceB path, GyroLPF lpfConfig, uint8_t sampleRateDivider = 0x00  );
+	void setAccelRateAndLPF( AccelFChoiceB path, AccelLPF lpfConfig );
+
+	void startReading();
+
+	void intCallback();
+
+	inline const ThreeAxisReadingsStamped< int16_t > & getAccelRaw() const {
+		return m_rawAccel;
 	}
 
-	inline void deactivateDevice() const {
-		HAL_GPIO_WritePin( m_csPort, m_csPin, GPIO_PIN_SET );
+	inline const ThreeAxisReadingsStamped< int16_t > & getGyroRaw() const {
+		return m_rawGyro;
 	}
 
-	inline void clearRxBuffer() {
-		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
-			m_rxBuffer[i] = 0;
-		}
+	inline const SingleValueReadingStamped< int16_t > & getTempRaw() const {
+		return m_rawTemp;
 	}
 
-	inline void clearTxBuffer() {
-		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
-			m_txBuffer[i] = 0;
-		}
+	inline const ThreeAxisReadingsStamped< float > & getAccel() const {
+		return m_accel;
 	}
 
-	inline void clearBuffers() {
-		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
-			m_txBuffer[i] = 0;
-			m_rxBuffer[i] = 0;
-		}
+	inline const ThreeAxisReadingsStamped< float > & getGyro() const {
+		return m_gyro;
 	}
 
-	void readRegisters( uint8_t reg, size_t size, uint8_t data[] );
-	void writeRegisters( uint8_t reg,  uint8_t data[], size_t size );
+	inline const SingleValueReadingStamped< float > & getTemp() const {
+		return m_temp;
+	}
 
-	/*--- Essas funções precisam ser implementadas ---*/
-	void readRegBit( uint8_t reg, uint8_t bitPos, uint8_t *data );
-	void writeRegBit( uint8_t reg, uint8_t bitPos, uint8_t data );
-
-	void readRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t *data );
-	void writeRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t data );
-
-	void readRegByte( uint8_t reg, uint8_t *data );
-	void writeRegByte( uint8_t reg, uint8_t data );
-
-	/*--- Methods based on
-	 * https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/MPU6050.h
-	 * Those methods wwere based on the above github but modified in order for allowing use of the STM32 SPI Library
-	 * for itnerface
-	 */
-	bool testConnection();
-
-	// AUX_VDDIO register
-	uint8_t getAuxVDDIOLevel();
-	void setAuxVDDIOLevel(uint8_t level);
-
-	// SMPLRT_DIV register
-	uint8_t getRate();
-	void setRate(uint8_t rate);
 
 	// CONFIG register
 	uint8_t getExternalFrameSync();
@@ -458,7 +571,7 @@ private:
 
 	// GYRO_CONFIG register
 	uint8_t getFullScaleGyroRange();
-	void setFullScaleGyroRange(uint8_t range);
+	void setFullScaleGyroRange(GyroRange range);
 
 	// SELF_TEST registers
 	uint8_t getAccelXSelfTestFactoryTrim();
@@ -477,7 +590,7 @@ private:
 	bool getAccelZSelfTest();
 	void setAccelZSelfTest(bool enabled);
 	uint8_t getFullScaleAccelRange();
-	void setFullScaleAccelRange(uint8_t range);
+	void setFullScaleAccelRange(AccelRange range);
 	uint8_t getDHPFMode();
 	void setDHPFMode(uint8_t mode);
 
@@ -620,22 +733,12 @@ private:
 	bool getIntI2CMasterStatus();
 	bool getIntDataReadyStatus();
 
-	// ACCEL_*OUT_* registers
-	void getMotion9(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz, int16_t* mx, int16_t* my, int16_t* mz);
-	void getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz);
-	void getAcceleration(int16_t* x, int16_t* y, int16_t* z);
-	int16_t getAccelerationX();
-	int16_t getAccelerationY();
-	int16_t getAccelerationZ();
+	void updateAll();
 
-	// TEMP_OUT_* registers
-	int16_t getTemperature();
-
-	// GYRO_*OUT_* registers
-	void getRotation(int16_t* x, int16_t* y, int16_t* z);
-	int16_t getRotationX();
-	int16_t getRotationY();
-	int16_t getRotationZ();
+	//Update sensors readings
+	void updateAcceleration();
+	void updateRotation();
+	void updateTemperature();
 
 	// EXT_SENS_DATA_* registers
 	uint8_t getExternalSensorByte(int position);
@@ -822,6 +925,59 @@ private:
 	uint8_t getDMPConfig2();
 	void setDMPConfig2(uint8_t config);
 
+private:
+	void readRegisters( uint8_t reg, size_t size, uint8_t data[] );
+	void writeRegisters( uint8_t reg,  uint8_t data[], size_t size );
+
+	/*--- Essas funções precisam ser implementadas ---*/
+	void readRegBit( uint8_t reg, uint8_t bitPos, uint8_t *data );
+	void writeRegBit( uint8_t reg, uint8_t bitPos, uint8_t data );
+
+	void readRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t *data );
+	void writeRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t data );
+
+	void readRegByte( uint8_t reg, uint8_t *data );
+	void writeRegByte( uint8_t reg, uint8_t data );
+
+	/*--- Methods based on
+	 * https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/MPU6050.h
+	 * Those methods were based on the above github but modified in order for allowing use of the STM32 SPI Library
+	 * for interface
+	 */
+	bool testConnection();
+
+	// AUX_VDDIO register
+	uint8_t getAuxVDDIOLevel();
+	void setAuxVDDIOLevel(uint8_t level);
+
+	/*-- Methods. --*/
+	inline void activateDevice() const {
+		HAL_GPIO_WritePin( m_csPort, m_csPin, GPIO_PIN_RESET );
+	}
+
+	inline void deactivateDevice() const {
+		HAL_GPIO_WritePin( m_csPort, m_csPin, GPIO_PIN_SET );
+	}
+
+	inline void clearRxBuffer() {
+		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
+			m_rxBuffer[i] = 0;
+		}
+	}
+
+	inline void clearTxBuffer() {
+		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
+			m_txBuffer[i] = 0;
+		}
+	}
+
+	inline void clearBuffers() {
+		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
+			m_txBuffer[i] = 0;
+			m_rxBuffer[i] = 0;
+		}
+	}
+
 
 	/*-- Variables. --*/
 	SPI_HandleTypeDef & m_spi;
@@ -829,10 +985,37 @@ private:
 	GPIO_TypeDef * m_csPort;
 	const uint16_t m_csPin;
 
+	State m_state;
+
+	/*--- Variáveis de configuração do sensor. ---*/
+	float m_accelRate;
+	float m_gyroRate;
+	float m_tempRate;
+
+	/*-- Largura de banda dos sensores, confiugrada nos sensores. ---*/
+	float m_accelLPFBandwidth;
+	float m_gyroLPFBandwidth;
+
+	uint8_t m_sampleRateDivider;
+
+	/*-- Fundo de escala configurado dos sensores. ---*/
+	float m_accelScale;
+	float m_gyroScale;
+	float m_tempScale;
+
+	/*--- Variáveis que armazenam configurações e leituras. ---*/
+
+	ThreeAxisReadingsStamped< int16_t > m_rawAccel;
+	ThreeAxisReadingsStamped< int16_t > m_rawGyro;
+	SingleValueReadingStamped< int16_t > m_rawTemp;
+
+	ThreeAxisReadingsStamped< float > m_accel;
+	ThreeAxisReadingsStamped< float > m_gyro;
+	SingleValueReadingStamped< float > m_temp;
+
 	uint8_t m_txBuffer[BUFFER_SIZE];
 	uint8_t m_rxBuffer[BUFFER_SIZE];
-
-	uint8_t buffer[30];
+	uint8_t buffer[BUFFER_SIZE];
 
 };
 

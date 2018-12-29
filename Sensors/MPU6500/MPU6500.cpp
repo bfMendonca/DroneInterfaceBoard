@@ -6,14 +6,58 @@ MPU6500::MPU6500( SPI_HandleTypeDef &spi, GPIO_TypeDef *csPort, uint16_t csPin )
 	m_spi( spi ),
 	m_csPort( csPort ),
 	m_csPin( csPin ),
+	m_state( NOT_INITIALIZED ),
 	m_txBuffer{},
 	m_rxBuffer{}
 {
 	deactivateDevice();
-
 	//Lets make sure that the buffers are clean
 	clearBuffers();
-	//Now we will config the device using the cfg struct.
+
+	if( testConnection() ) {
+		//Here, we will reset the device, set the state as NOT_INITIALIZED, and prepare device for usage
+		reset();
+
+		//As for this drivers, it's realys on Interruption, so let's make it working by default
+		//Enable IntData Ready, and Latch Type interrupt
+		setIntDataReadyEnabled( true );
+		setInterruptLatch( false );
+
+		//Let's enable the interrupt that will be handled by this driver
+		setIntDataReadyEnabled( true );
+		setIntFIFOBufferOverflowEnabled( true );
+
+		//As the internal PLL as clock source, as seems to be the most accurate form
+		setClockSource( 0x01 );
+
+		//Let's wait a little bit for the pll osc to stabilize
+		HAL_Delay( 10 );
+
+		//Get the sensor running with default mode, can be changed later
+		m_state = CONFIG_MODE;
+
+		//LEt's set some default config and let the driver "halted", ie, it will not retrieve data while the user
+		//has not, explicitly, called the started method. This is just to ensure the user to change the SPI Speed before, to
+		//make the throughput faster
+		setFullScaleGyroRange( SCALE_250_DPS );
+		setFullScaleAccelRange( SCALE_2_G );
+
+		//Let's configure the Filters and, with that, calc the output rate.
+		//this config is default. It can be changed later
+		setGyroRateAndLPF( GYRO_USE_LPF, GYRO_LPF_184_HZ, 0  );
+		setAccelRateAndLPF( ACCEL_USE_LPF, ACCEL_LPF_184_HZ );
+
+		//Just for testing
+		setStandbyXAccelEnabled( false );
+		setStandbyYAccelEnabled( false );
+		setStandbyZAccelEnabled( false );
+		setStandbyXGyroEnabled( false );
+		setStandbyYGyroEnabled( false );
+		setStandbyZGyroEnabled( false );
+
+	}else {
+		m_state = DISCONNECTED;
+	}
 }
 
 MPU6500::~MPU6500() {
@@ -34,7 +78,110 @@ void MPU6500::readRegisters( uint8_t reg, size_t size, uint8_t *data ) {
 }
 
 void MPU6500::writeRegisters( uint8_t reg, uint8_t data[], size_t size ) {
+	m_txBuffer[0] = reg;
 
+	for( size_t i = 0; i < size; ++i) {
+		m_txBuffer[1+i] = data[i];
+	}
+
+	activateDevice();
+	HAL_SPI_TransmitReceive( &m_spi, m_txBuffer, m_rxBuffer, (size+1), 1000 );
+	deactivateDevice();
+
+	return;
+}
+
+void MPU6500::readRegBit( uint8_t reg, uint8_t bitPos, uint8_t *data ) {
+	uint8_t buffer = 0x00;
+	readRegByte( reg, &buffer );
+
+	*data = buffer & 0x01 << bitPos;
+}
+
+void MPU6500::writeRegBit( uint8_t reg, uint8_t bitPos, uint8_t data ) {
+	//Primeiro, le o registrador
+	uint8_t buffer = 0x00;
+	readRegByte( reg, &buffer );
+
+	//Ajusta a máscara dos bit que será ajustado
+	uint8_t mask = ( 0x01 << bitPos );
+	data = data << bitPos;
+
+	//Garante que somente um bit do argumento esteja setado
+	data = data & mask;
+
+	//Limpa o bit do registrador que iremos escrever
+	buffer = buffer & ~mask;
+
+	//Agora que o Registrado está limpo, escrevemos o dado.
+	buffer = buffer | data;
+
+	//Escrita no registrador
+	writeRegByte( reg, buffer );
+}
+
+void MPU6500::readRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t *data ) {
+	uint8_t buffer = 0x00;
+	readRegByte( reg, &buffer );
+
+	uint8_t mask = 0x00;
+	uint8_t temp = 0x01;
+	for( size_t i = 0; i < bitsLenght; ++i ) {
+		mask = mask | temp << i ;
+	}
+
+	mask = mask << ( bitPos - ( bitsLenght -1 ) );
+	*data = buffer & mask;
+}
+
+void MPU6500::writeRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t data ) {
+	uint8_t buffer = 0x00;
+	readRegByte( reg, &buffer );
+
+	uint8_t mask = 0x00;
+	uint8_t temp = 0x01;
+	for( size_t i = 0; i < bitsLenght; ++i ) {
+		mask = mask | temp << i ;
+	}
+
+
+	mask = mask << ( bitPos - ( bitsLenght - 1 ) );
+	data = data << ( bitPos - ( bitsLenght - 1 ) );
+
+	//Primeiro, vamos limpar os bits em que iremos escrever
+	buffer = buffer & ~mask;
+
+	//Agora, vamos sobreescrever a seção dos bits - Data & Mask garante que somente a seção desejada será sobrescrita
+	buffer = buffer | ( data & mask );
+
+	writeRegByte( reg, buffer );
+}
+
+void MPU6500::readRegByte( uint8_t reg, uint8_t *data ) {
+	readRegisters(reg, 1, data);
+}
+
+void MPU6500::writeRegByte( uint8_t reg, uint8_t data ) {
+	writeRegisters(reg, &data, 1 );
+}
+
+void MPU6500::intCallback() {
+	/*--- Se estamos aqui, então uma interrupção foi disparada, vamos recuerar o registrador de status. ---*/
+
+	//If running, then the bus is safe to be read, other wise, it would be possible to "read" data while we are configuring the sensor
+	if( m_state == RUNNING ) {
+		volatile uint8_t status = getIntStatus();
+		uint8_t mask = 0x01 << MPU6500_INTERRUPT_DATA_RDY_BIT;
+
+		if( status && mask != 0x00 ) {
+			updateAll();
+		}
+
+		mask = 0x01 << MPU6500_INTERRUPT_FIFO_OFLOW_BIT;
+		if( status && mask != 0x00 ) {
+
+		}
+	}
 }
 
 /** Verify the I2C connection.
@@ -42,7 +189,7 @@ void MPU6500::writeRegisters( uint8_t reg, uint8_t data[], size_t size ) {
  * @return True if connection is valid, false otherwise
  */
 bool MPU6500::testConnection() {
-    return getDeviceID() == 0x70;
+    return  getDeviceID() == 0x70;
 }
 
 // AUX_VDDIO register (InvenSense demo code calls this RA_*G_OFFS_TC)
@@ -65,42 +212,6 @@ uint8_t MPU6500::getAuxVDDIOLevel() {
  */
 void MPU6500::setAuxVDDIOLevel(uint8_t level) {
     writeRegBit( MPU6500_RA_YG_OFFS_TC, MPU6500_TC_PWR_MODE_BIT, level);
-}
-
-// SMPLRT_DIV register
-
-/** Get gyroscope output rate divider.
- * The sensor register output, FIFO output, DMP sampling, Motion detection, Zero
- * Motion detection, and Free Fall detection are all based on the Sample Rate.
- * The Sample Rate is generated by dividing the gyroscope output rate by
- * SMPLRT_DIV:
- *
- * Sample Rate = Gyroscope Output Rate / (1 + SMPLRT_DIV)
- *
- * where Gyroscope Output Rate = 8kHz when the DLPF is disabled (DLPF_CFG = 0 or
- * 7), and 1kHz when the DLPF is enabled (see Register 26).
- *
- * Note: The accelerometer output rate is 1kHz. This means that for a Sample
- * Rate greater than 1kHz, the same accelerometer sample may be output to the
- * FIFO, DMP, and sensor registers more than once.
- *
- * For a diagram of the gyroscope and accelerometer signal paths, see Section 8
- * of the MPU-6000/MPU-6050 Product Specification document.
- *
- * @return Current sample rate
- * @see MPU6500_RA_SMPLRT_DIV
- */
-uint8_t MPU6500::getRate() {
-    readRegByte( MPU6500_RA_SMPLRT_DIV, buffer);
-    return buffer[0];
-}
-/** Set gyroscope sample rate divider.
- * @param rate New sample rate divider
- * @see getRate()
- * @see MPU6500_RA_SMPLRT_DIV
- */
-void MPU6500::setRate(uint8_t rate) {
-    writeRegByte(MPU6500_RA_SMPLRT_DIV, rate);
 }
 
 // CONFIG register
@@ -219,8 +330,186 @@ uint8_t MPU6500::getFullScaleGyroRange() {
  * @see MPU6500_GCONFIG_FS_SEL_BIT
  * @see MPU6500_GCONFIG_FS_SEL_LENGTH
  */
-void MPU6500::setFullScaleGyroRange(uint8_t range) {
+void MPU6500::setFullScaleGyroRange(GyroRange range) {
+
+	switch( range ) {
+    	case SCALE_250_DPS:
+    	    m_gyroScale = 250.0;
+    		break;
+
+    	case SCALE_500_DPS:
+    		m_gyroScale = 500.0;
+    		break;
+
+    	case SCALE_1000_DPS:
+    		m_gyroScale = 1000.0;
+    		break;
+
+    	case SCALE_2000_DPS:
+    		m_gyroScale = 2000.0;
+    		break;
+
+    	default:
+    		range = SCALE_250_DPS;
+    		m_gyroScale = 250.0;
+    }
     writeRegBits( MPU6500_RA_GYRO_CONFIG, MPU6500_GCONFIG_FS_SEL_BIT, MPU6500_GCONFIG_FS_SEL_LENGTH, range);
+}
+
+void MPU6500::setAccelRateAndLPF( AccelFChoiceB path, AccelLPF lpfConfig ) {
+	if( path == ACCEL_BYPASS_LPF ) {
+		//LPF Note used for this mode
+		m_accelLPFBandwidth = 1130.0; //Hz
+		m_accelRate = 4000.0;	//Hz
+	}else if( path == ACCEL_USE_LPF ) {
+
+		switch( lpfConfig ) {
+
+		case ACCEL_LPF_460_HZ:
+			m_accelLPFBandwidth = 460.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_184_HZ:
+			m_accelLPFBandwidth = 184.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_92_HZ:
+			m_accelLPFBandwidth = 92.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_41_HZ:
+			m_accelLPFBandwidth = 41.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_20_HZ:
+			m_accelLPFBandwidth = 20.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_10_HZ:
+			m_accelLPFBandwidth = 10.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_5_HZ:
+			m_accelLPFBandwidth = 5.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		case ACCEL_LPF_460_HZ_2:
+			m_accelLPFBandwidth = 460.0;
+			m_accelRate = 1000.0/static_cast<float>( 1.0 + m_sampleRateDivider );
+			break;
+
+		default:
+			m_accelLPFBandwidth = 184.0;
+			m_accelRate = 1000.0;
+			lpfConfig = ACCEL_LPF_184_HZ;
+		}
+	}else {
+		path = ACCEL_USE_LPF;
+		lpfConfig = ACCEL_LPF_184_HZ;
+
+		m_accelLPFBandwidth = 184.0;
+		m_accelRate = 1000.0;
+	}
+
+	//Here we will, actually, change the registers of the device to set it up
+	//First, FCHOICE_B
+	writeRegBit( MPU6500_RA_ACCEL_CONFIG_2, MPU6500_ACONFIG_FCHOICE_B_BIT, path );
+
+	//Setting up the LPF Config
+	writeRegBits( MPU6500_RA_ACCEL_CONFIG_2, MPU6500_ACONFIG_DLPF_BIT, MPU6500_ACONFIG_DLPF_LENGTH, lpfConfig );
+}
+
+void MPU6500::setGyroRateAndLPF( GyroFChoiceB path, GyroLPF lpfConfig, uint8_t sampleRateDivider ) {
+	//First, let's check the signal path,
+	if( path == GYRO_BYPASS_LPF_BW_8800_HZ ) {
+		//LPF Not used for this mode
+		m_gyroLPFBandwidth = 8800.0; // Hz
+		m_gyroRate = 32000;	//Hz
+	}else if( path == GYRO_BYPASS_LPF_BW_3600_HZ ) {
+		//LPF Not used for this mode
+		m_gyroLPFBandwidth = 3600.0; // Hz
+		m_gyroRate = 32000; //Hz
+	}else if( path == GYRO_USE_LPF) {
+		//Here we need to, actually, check what was config as lpf
+		switch( lpfConfig ) {
+
+		case GYRO_LPF_250_HZ:
+			m_gyroLPFBandwidth = 250.0;
+			m_gyroRate = 8000;
+			break;
+
+		case GYRO_LPF_184_HZ:
+			m_gyroLPFBandwidth = 184.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_92_HZ:
+			m_gyroLPFBandwidth = 92.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_41_HZ:
+			m_gyroLPFBandwidth = 41.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_20_HZ:
+			m_gyroLPFBandwidth = 20.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_10_HZ:
+			m_gyroLPFBandwidth = 10.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_5_HZ:
+			m_gyroLPFBandwidth = 5.0;
+			m_gyroRate = 1000.0/static_cast<float>( 1.0 + sampleRateDivider );
+			break;
+
+		case GYRO_LPF_3600_HZ:
+			m_gyroLPFBandwidth = 3600.0;
+			m_gyroRate = 8000;
+			break;
+
+		default:
+			//Setting some default config. If endup here, something was wrong
+			m_gyroLPFBandwidth = 184.0;
+			m_gyroRate = 1000;
+			lpfConfig = GYRO_LPF_184_HZ;
+		}
+	}else {
+		path = GYRO_USE_LPF;
+		lpfConfig = GYRO_LPF_184_HZ;
+
+		//If we endup here, something is wrong, let's at least make things run with default setup
+		m_gyroLPFBandwidth = 184.0;
+		m_gyroRate = 1000;
+	}
+
+	m_sampleRateDivider = sampleRateDivider;
+
+	//Here we will, actually, change the registers of the device to set it up
+	//First, FCHOICE_B
+	writeRegBits( MPU6500_RA_GYRO_CONFIG, MPU6500_GCONFIG_FCHOICE_B_BIT, MPU6500_GCONFIG_FCHOICE_B_LENGTH, path );
+
+	//Setting up the LPF Config
+	writeRegBits( MPU6500_RA_CONFIG, MPU6500_CFG_DLPF_CFG_BIT, MPU6500_CFG_DLPF_CFG_LENGTH, lpfConfig );
+
+	//And, lastly, writting up the sample rate divider
+	writeRegByte( MPU6500_RA_SMPLRT_DIV, m_sampleRateDivider );
+}
+
+void MPU6500::startReading() {
+	m_state = RUNNING;
 }
 
 // SELF TEST FACTORY TRIM VALUES
@@ -353,7 +642,29 @@ uint8_t MPU6500::getFullScaleAccelRange() {
  * @param range New full-scale accelerometer range setting
  * @see getFullScaleAccelRange()
  */
-void MPU6500::setFullScaleAccelRange(uint8_t range) {
+void MPU6500::setFullScaleAccelRange(AccelRange range) {
+
+	switch( range ) {
+	case SCALE_2_G:
+		m_accelScale = 2.0;
+		break;
+	case SCALE_4_G:
+		m_accelScale = 4.0;
+		break;
+
+	case SCALE_8_G:
+		m_accelScale = 8.0;
+		break;
+
+	case SCALE_16_G:
+		m_accelScale = 16.0;
+		break;
+
+	default:
+		range = SCALE_2_G;
+		m_accelScale = 2.0;
+	}
+
     writeRegBits( MPU6500_RA_ACCEL_CONFIG, MPU6500_ACONFIG_AFS_SEL_BIT, MPU6500_ACONFIG_AFS_SEL_LENGTH, range);
 }
 /** Get the high-pass filter configuration.
@@ -405,68 +716,6 @@ void MPU6500::setDHPFMode(uint8_t bandwidth) {
     writeRegBits( MPU6500_RA_ACCEL_CONFIG, MPU6500_ACONFIG_ACCEL_HPF_BIT, MPU6500_ACONFIG_ACCEL_HPF_LENGTH, bandwidth);
 }
 
-// FF_THR register
-
-/** Get free-fall event acceleration threshold.
- * This register configures the detection threshold for Free Fall event
- * detection. The unit of FF_THR is 1LSB = 2mg. Free Fall is detected when the
- * absolute value of the accelerometer measurements for the three axes are each
- * less than the detection threshold. This condition increments the Free Fall
- * duration counter (Register 30). The Free Fall interrupt is triggered when the
- * Free Fall duration counter reaches the time specified in FF_DUR.
- *
- * For more details on the Free Fall detection interrupt, see Section 8.2 of the
- * MPU-6000/MPU-6050 Product Specification document as well as Registers 56 and
- * 58 of this document.
- *
- * @return Current free-fall acceleration threshold value (LSB = 2mg)
- * @see MPU6500_RA_FF_THR
- */
-uint8_t MPU6500::getFreefallDetectionThreshold() {
-    readRegByte( MPU6500_RA_FF_THR, buffer);
-    return buffer[0];
-}
-/** Get free-fall event acceleration threshold.
- * @param threshold New free-fall acceleration threshold value (LSB = 2mg)
- * @see getFreefallDetectionThreshold()
- * @see MPU6500_RA_FF_THR
- */
-void MPU6500::setFreefallDetectionThreshold(uint8_t threshold) {
-    writeRegByte(MPU6500_RA_FF_THR, threshold);
-}
-
-// FF_DUR register
-
-/** Get free-fall event duration threshold.
- * This register configures the duration counter threshold for Free Fall event
- * detection. The duration counter ticks at 1kHz, therefore FF_DUR has a unit
- * of 1 LSB = 1 ms.
- *
- * The Free Fall duration counter increments while the absolute value of the
- * accelerometer measurements are each less than the detection threshold
- * (Register 29). The Free Fall interrupt is triggered when the Free Fall
- * duration counter reaches the time specified in this register.
- *
- * For more details on the Free Fall detection interrupt, see Section 8.2 of
- * the MPU-6000/MPU-6050 Product Specification document as well as Registers 56
- * and 58 of this document.
- *
- * @return Current free-fall duration threshold value (LSB = 1ms)
- * @see MPU6500_RA_FF_DUR
- */
-uint8_t MPU6500::getFreefallDetectionDuration() {
-    readRegByte( MPU6500_RA_FF_DUR, buffer);
-    return buffer[0];
-}
-/** Get free-fall event duration threshold.
- * @param duration New free-fall duration threshold value (LSB = 1ms)
- * @see getFreefallDetectionDuration()
- * @see MPU6500_RA_FF_DUR
- */
-void MPU6500::setFreefallDetectionDuration(uint8_t duration) {
-    writeRegByte(MPU6500_RA_FF_DUR, duration);
-}
-
 // MOT_THR register
 
 /** Get motion detection event acceleration threshold.
@@ -501,109 +750,7 @@ void MPU6500::setMotionDetectionThreshold(uint8_t threshold) {
     writeRegByte(MPU6500_RA_MOT_THR, threshold);
 }
 
-// MOT_DUR register
-
-/** Get motion detection event duration threshold.
- * This register configures the duration counter threshold for Motion interrupt
- * generation. The duration counter ticks at 1 kHz, therefore MOT_DUR has a unit
- * of 1LSB = 1ms. The Motion detection duration counter increments when the
- * absolute value of any of the accelerometer measurements exceeds the Motion
- * detection threshold (Register 31). The Motion detection interrupt is
- * triggered when the Motion detection counter reaches the time count specified
- * in this register.
- *
- * For more details on the Motion detection interrupt, see Section 8.3 of the
- * MPU-6000/MPU-6050 Product Specification document.
- *
- * @return Current motion detection duration threshold value (LSB = 1ms)
- * @see MPU6500_RA_MOT_DUR
- */
-uint8_t MPU6500::getMotionDetectionDuration() {
-    readRegByte( MPU6500_RA_MOT_DUR, buffer);
-    return buffer[0];
-}
-/** Set motion detection event duration threshold.
- * @param duration New motion detection duration threshold value (LSB = 1ms)
- * @see getMotionDetectionDuration()
- * @see MPU6500_RA_MOT_DUR
- */
-void MPU6500::setMotionDetectionDuration(uint8_t duration) {
-    writeRegByte(MPU6500_RA_MOT_DUR, duration);
-}
-
-// ZRMOT_THR register
-
-/** Get zero motion detection event acceleration threshold.
- * This register configures the detection threshold for Zero Motion interrupt
- * generation. The unit of ZRMOT_THR is 1LSB = 2mg. Zero Motion is detected when
- * the absolute value of the accelerometer measurements for the 3 axes are each
- * less than the detection threshold. This condition increments the Zero Motion
- * duration counter (Register 34). The Zero Motion interrupt is triggered when
- * the Zero Motion duration counter reaches the time count specified in
- * ZRMOT_DUR (Register 34).
- *
- * Unlike Free Fall or Motion detection, Zero Motion detection triggers an
- * interrupt both when Zero Motion is first detected and when Zero Motion is no
- * longer detected.
- *
- * When a zero motion event is detected, a Zero Motion Status will be indicated
- * in the MOT_DETECT_STATUS register (Register 97). When a motion-to-zero-motion
- * condition is detected, the status bit is set to 1. When a zero-motion-to-
- * motion condition is detected, the status bit is set to 0.
- *
- * For more details on the Zero Motion detection interrupt, see Section 8.4 of
- * the MPU-6000/MPU-6050 Product Specification document as well as Registers 56
- * and 58 of this document.
- *
- * @return Current zero motion detection acceleration threshold value (LSB = 2mg)
- * @see MPU6500_RA_ZRMOT_THR
- */
-uint8_t MPU6500::getZeroMotionDetectionThreshold() {
-    readRegByte( MPU6500_RA_ZRMOT_THR, buffer);
-    return buffer[0];
-}
-/** Set zero motion detection event acceleration threshold.
- * @param threshold New zero motion detection acceleration threshold value (LSB = 2mg)
- * @see getZeroMotionDetectionThreshold()
- * @see MPU6500_RA_ZRMOT_THR
- */
-void MPU6500::setZeroMotionDetectionThreshold(uint8_t threshold) {
-    writeRegByte(MPU6500_RA_ZRMOT_THR, threshold);
-}
-
-// ZRMOT_DUR register
-
-/** Get zero motion detection event duration threshold.
- * This register configures the duration counter threshold for Zero Motion
- * interrupt generation. The duration counter ticks at 16 Hz, therefore
- * ZRMOT_DUR has a unit of 1 LSB = 64 ms. The Zero Motion duration counter
- * increments while the absolute value of the accelerometer measurements are
- * each less than the detection threshold (Register 33). The Zero Motion
- * interrupt is triggered when the Zero Motion duration counter reaches the time
- * count specified in this register.
- *
- * For more details on the Zero Motion detection interrupt, see Section 8.4 of
- * the MPU-6000/MPU-6050 Product Specification document, as well as Registers 56
- * and 58 of this document.
- *
- * @return Current zero motion detection duration threshold value (LSB = 64ms)
- * @see MPU6500_RA_ZRMOT_DUR
- */
-uint8_t MPU6500::getZeroMotionDetectionDuration() {
-    readRegByte( MPU6500_RA_ZRMOT_DUR, buffer);
-    return buffer[0];
-}
-/** Set zero motion detection event duration threshold.
- * @param duration New zero motion detection duration threshold value (LSB = 1ms)
- * @see getZeroMotionDetectionDuration()
- * @see MPU6500_RA_ZRMOT_DUR
- */
-void MPU6500::setZeroMotionDetectionDuration(uint8_t duration) {
-    writeRegByte(MPU6500_RA_ZRMOT_DUR, duration);
-}
-
 // FIFO_EN register
-
 /** Get temperature FIFO enabled value.
  * When set to 1, this bit enables TEMP_OUT_H and TEMP_OUT_L (Registers 65 and
  * 66) to be written into the FIFO buffer.
@@ -1725,49 +1872,42 @@ bool MPU6500::getIntDataReadyStatus() {
     return buffer[0];
 }
 
-// ACCEL_*OUT_* registers
+void MPU6500::updateAll() {
+    //insert the stamp
+    uint32_t ts = HAL_GetTick();
 
-/** Get raw 9-axis motion sensor readings (accel/gyro/compass).
- * FUNCTION NOT FULLY IMPLEMENTED YET.
- * @param ax 16-bit signed integer container for accelerometer X-axis value
- * @param ay 16-bit signed integer container for accelerometer Y-axis value
- * @param az 16-bit signed integer container for accelerometer Z-axis value
- * @param gx 16-bit signed integer container for gyroscope X-axis value
- * @param gy 16-bit signed integer container for gyroscope Y-axis value
- * @param gz 16-bit signed integer container for gyroscope Z-axis value
- * @param mx 16-bit signed integer container for magnetometer X-axis value
- * @param my 16-bit signed integer container for magnetometer Y-axis value
- * @param mz 16-bit signed integer container for magnetometer Z-axis value
- * @see getMotion6()
- * @see getAcceleration()
- * @see getRotation()
- * @see MPU6500_RA_ACCEL_XOUT_H
- */
-void MPU6500::getMotion9(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz, int16_t* mx, int16_t* my, int16_t* mz) {
-    getMotion6(ax, ay, az, gx, gy, gz);
-    // TODO: magnetometer integration
-}
-/** Get raw 6-axis motion sensor readings (accel/gyro).
- * Retrieves all currently available motion sensor values.
- * @param ax 16-bit signed integer container for accelerometer X-axis value
- * @param ay 16-bit signed integer container for accelerometer Y-axis value
- * @param az 16-bit signed integer container for accelerometer Z-axis value
- * @param gx 16-bit signed integer container for gyroscope X-axis value
- * @param gy 16-bit signed integer container for gyroscope Y-axis value
- * @param gz 16-bit signed integer container for gyroscope Z-axis value
- * @see getAcceleration()
- * @see getRotation()
- * @see MPU6500_RA_ACCEL_XOUT_H
- */
-void MPU6500::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz) {
     readRegisters(MPU6500_RA_ACCEL_XOUT_H, 14, buffer);
-    *ax = (((int16_t)buffer[0]) << 8) | buffer[1];
-    *ay = (((int16_t)buffer[2]) << 8) | buffer[3];
-    *az = (((int16_t)buffer[4]) << 8) | buffer[5];
-    *gx = (((int16_t)buffer[8]) << 8) | buffer[9];
-    *gy = (((int16_t)buffer[10]) << 8) | buffer[11];
-    *gz = (((int16_t)buffer[12]) << 8) | buffer[13];
+    m_rawAccel.rx() = 		(((int16_t)buffer[0]) << 8) | buffer[1];
+    m_rawAccel.ry() = 		(((int16_t)buffer[2]) << 8) | buffer[3];
+    m_rawAccel.rz() = 		(((int16_t)buffer[4]) << 8) | buffer[5];
+
+    m_rawTemp.rValue() = 	(((int16_t)buffer[6]) << 8) | buffer[7];
+
+    m_rawGyro.rx() = 		(((int16_t)buffer[8]) << 8) | buffer[9];
+    m_rawGyro.ry() = 		(((int16_t)buffer[10]) << 8) | buffer[11];
+    m_rawGyro.rz() = 		(((int16_t)buffer[12]) << 8) | buffer[13];
+
+    //Let's convert the values using the full-scale setup
+    m_accel.setX( m_rawAccel.x()*m_accelScale/32768.0 );
+    m_accel.setY( m_rawAccel.y()*m_accelScale/32768.0 );
+    m_accel.setZ( m_rawAccel.z()*m_accelScale/32768.0 );
+
+    m_gyro.setX( m_rawGyro.x()*m_gyroScale/32768.0 );
+    m_gyro.setY( m_rawGyro.y()*m_gyroScale/32768.0 );
+    m_gyro.setZ( m_rawGyro.z()*m_gyroScale/32768.0 );
+
+    //Get the temperature
+    m_temp = m_rawTemp.value()*100.0/32768.0 + 21.0;	//98.146 é o fundo de escala, na teoria
+
+    m_rawAccel.setTimeStamp( ts );
+    m_rawGyro.setTimeStamp( ts );
+    m_rawTemp.setTimeStamp( ts );
+
+    m_accel.setTimeStamp( ts );
+    m_gyro.setTimeStamp( ts );
+    m_temp.setTimeStamp( ts );
 }
+
 /** Get 3-axis accelerometer readings.
  * These registers store the most recent accelerometer measurements.
  * Accelerometer measurements are written to these registers at the Sample Rate
@@ -1804,49 +1944,20 @@ void MPU6500::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int
  * @param z 16-bit signed integer container for Z-axis acceleration
  * @see MPU6500_RA_GYRO_XOUT_H
  */
-void MPU6500::getAcceleration(int16_t* x, int16_t* y, int16_t* z) {
+void MPU6500::updateAcceleration() {
     readRegisters(MPU6500_RA_ACCEL_XOUT_H, 6, buffer);
-    *x = (((int16_t)buffer[0]) << 8) | buffer[1];
-    *y = (((int16_t)buffer[2]) << 8) | buffer[3];
-    *z = (((int16_t)buffer[4]) << 8) | buffer[5];
+    m_rawAccel.rx() = (((int16_t)buffer[0]) << 8) | buffer[1];
+    m_rawAccel.ry() = (((int16_t)buffer[2]) << 8) | buffer[3];
+    m_rawAccel.rz() = (((int16_t)buffer[4]) << 8) | buffer[5];
 }
-/** Get X-axis accelerometer reading.
- * @return X-axis acceleration measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_ACCEL_XOUT_H
- */
-int16_t MPU6500::getAccelerationX() {
-    readRegisters(MPU6500_RA_ACCEL_XOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
-}
-/** Get Y-axis accelerometer reading.
- * @return Y-axis acceleration measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_ACCEL_YOUT_H
- */
-int16_t MPU6500::getAccelerationY() {
-    readRegisters(MPU6500_RA_ACCEL_YOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
-}
-/** Get Z-axis accelerometer reading.
- * @return Z-axis acceleration measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_ACCEL_ZOUT_H
- */
-int16_t MPU6500::getAccelerationZ() {
-    readRegisters(MPU6500_RA_ACCEL_ZOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
-}
-
-// TEMP_OUT_* registers
 
 /** Get current internal temperature.
  * @return Temperature reading in 16-bit 2's complement format
  * @see MPU6500_RA_TEMP_OUT_H
  */
-int16_t MPU6500::getTemperature() {
+void MPU6500::updateTemperature() {
     readRegisters(MPU6500_RA_TEMP_OUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
+    m_rawTemp.setValue( (((int16_t)buffer[0]) << 8) | buffer[1] );
 }
 
 // GYRO_*OUT_* registers
@@ -1883,38 +1994,11 @@ int16_t MPU6500::getTemperature() {
  * @see getMotion6()
  * @see MPU6500_RA_GYRO_XOUT_H
  */
-void MPU6500::getRotation(int16_t* x, int16_t* y, int16_t* z) {
+void MPU6500::updateRotation() {
     readRegisters(MPU6500_RA_GYRO_XOUT_H, 6, buffer);
-    *x = (((int16_t)buffer[0]) << 8) | buffer[1];
-    *y = (((int16_t)buffer[2]) << 8) | buffer[3];
-    *z = (((int16_t)buffer[4]) << 8) | buffer[5];
-}
-/** Get X-axis gyroscope reading.
- * @return X-axis rotation measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_GYRO_XOUT_H
- */
-int16_t MPU6500::getRotationX() {
-    readRegisters(MPU6500_RA_GYRO_XOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
-}
-/** Get Y-axis gyroscope reading.
- * @return Y-axis rotation measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_GYRO_YOUT_H
- */
-int16_t MPU6500::getRotationY() {
-    readRegisters(MPU6500_RA_GYRO_YOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
-}
-/** Get Z-axis gyroscope reading.
- * @return Z-axis rotation measurement in 16-bit 2's complement format
- * @see getMotion6()
- * @see MPU6500_RA_GYRO_ZOUT_H
- */
-int16_t MPU6500::getRotationZ() {
-    readRegisters(MPU6500_RA_GYRO_ZOUT_H, 2, buffer);
-    return (((int16_t)buffer[0]) << 8) | buffer[1];
+    m_rawGyro.rx() = (((int16_t)buffer[0]) << 8) | buffer[1];
+    m_rawGyro.ry() = (((int16_t)buffer[2]) << 8) | buffer[3];
+    m_rawGyro.rz() = (((int16_t)buffer[4]) << 8) | buffer[5];
 }
 
 // EXT_SENS_DATA_* registers
@@ -2393,7 +2477,13 @@ void MPU6500::resetSensors() {
  * @see MPU6500_PWR1_DEVICE_RESET_BIT
  */
 void MPU6500::reset() {
+	//Reset procedure made as described in the user manual
     writeRegBit( MPU6500_RA_PWR_MGMT_1, MPU6500_PWR1_DEVICE_RESET_BIT, true);
+    HAL_Delay( 100 );
+    writeRegBits( MPU6500_RA_SIGNAL_PATH_RESET, 2, 3, 0x07 );
+    HAL_Delay( 100 );
+
+    m_state = NOT_INITIALIZED;
 }
 /** Get sleep mode status.
  * Setting the SLEEP bit in the register puts the device into very low power
@@ -2735,7 +2825,7 @@ void MPU6500::setFIFOByte(uint8_t data) {
  * @see MPU6500_WHO_AM_I_LENGTH
  */
 uint8_t MPU6500::getDeviceID() {
-    readRegBits( MPU6500_RA_WHO_AM_I, MPU6500_WHO_AM_I_BIT, MPU6500_WHO_AM_I_LENGTH, buffer);
+	readRegBits(MPU6500_RA_WHO_AM_I, MPU6500_WHO_AM_I_BIT, MPU6500_WHO_AM_I_LENGTH, &buffer[0]);
     return buffer[0];
 }
 /** Set Device ID.
@@ -2827,7 +2917,8 @@ int16_t MPU6500::getXAccelOffset() {
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
 void MPU6500::setXAccelOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_XA_OFFS_H, offset);
+	memcpy( buffer, &offset, 2 );
+	writeRegisters( MPU6500_RA_XA_OFFS_H, buffer, 2 );
 }
 
 // YA_OFFS_* register
@@ -2836,8 +2927,10 @@ int16_t MPU6500::getYAccelOffset() {
     readRegisters(MPU6500_RA_YA_OFFS_H, 2, buffer);
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
+
 void MPU6500::setYAccelOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_YA_OFFS_H, offset);
+	memcpy( buffer, &offset, 2 );
+	writeRegisters( MPU6500_RA_YA_OFFS_H, buffer, 2 );
 }
 
 // ZA_OFFS_* register
@@ -2846,8 +2939,10 @@ int16_t MPU6500::getZAccelOffset() {
     readRegisters(MPU6500_RA_ZA_OFFS_H, 2, buffer);
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
+
 void MPU6500::setZAccelOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_ZA_OFFS_H, offset);
+	memcpy( buffer, &offset, 2 );
+	writeRegisters( MPU6500_RA_ZA_OFFS_H, buffer, 2 );
 }
 
 // XG_OFFS_USR* registers
@@ -2857,7 +2952,8 @@ int16_t MPU6500::getXGyroOffset() {
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
 void MPU6500::setXGyroOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_XG_OFFS_USRH, offset);
+    memcpy( buffer, &offset, 2 );
+    writeRegisters( MPU6500_RA_XG_OFFS_USRH, buffer, 2 );
 }
 
 // YG_OFFS_USR* register
@@ -2866,8 +2962,10 @@ int16_t MPU6500::getYGyroOffset() {
     readRegisters(MPU6500_RA_YG_OFFS_USRH, 2, buffer);
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
+
 void MPU6500::setYGyroOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_YG_OFFS_USRH, offset);
+    memcpy( buffer, &offset, 2 );
+    writeRegisters( MPU6500_RA_YG_OFFS_USRH, buffer, 2 );
 }
 
 // ZG_OFFS_USR* register
@@ -2877,7 +2975,8 @@ int16_t MPU6500::getZGyroOffset() {
     return (((int16_t)buffer[0]) << 8) | buffer[1];
 }
 void MPU6500::setZGyroOffset(int16_t offset) {
-    I2Cdev::writeWord(devAddr, MPU6500_RA_ZG_OFFS_USRH, offset);
+	memcpy( buffer, &offset, 2 );
+    writeRegisters( MPU6500_RA_ZG_OFFS_USRH, buffer, 2 );
 }
 
 // INT_ENABLE register (DMP functions)
@@ -3003,161 +3102,162 @@ void MPU6500::readMemoryBlock(uint8_t *data, uint16_t dataSize, uint8_t bank, ui
         }
     }
 }
+
 bool MPU6500::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify, bool useProgMem) {
-    setMemoryBank(bank);
-    setMemoryStartAddress(address);
-    uint8_t chunkSize;
-    uint8_t *verifyBuffer=0;
-    uint8_t *progBuffer=0;
-    uint16_t i;
-    uint8_t j;
-    if (verify) verifyBuffer = (uint8_t *)malloc(MPU6500_DMP_MEMORY_CHUNK_SIZE);
-    if (useProgMem) progBuffer = (uint8_t *)malloc(MPU6500_DMP_MEMORY_CHUNK_SIZE);
-    for (i = 0; i < dataSize;) {
-        // determine correct chunk size according to bank position and data size
-        chunkSize = MPU6500_DMP_MEMORY_CHUNK_SIZE;
-
-        // make sure we don't go past the data size
-        if (i + chunkSize > dataSize) chunkSize = dataSize - i;
-
-        // make sure this chunk doesn't go past the bank boundary (256 bytes)
-        if (chunkSize > 256 - address) chunkSize = 256 - address;
-
-        if (useProgMem) {
-            // write the chunk of data as specified
-            for (j = 0; j < chunkSize; j++) progBuffer[j] = pgm_read_byte(data + i + j);
-        } else {
-            // write the chunk of data as specified
-            progBuffer = (uint8_t *)data + i;
-        }
-
-        writeRegisters(MPU6500_RA_MEM_R_W, chunkSize, progBuffer);
-
-        // verify data if needed
-        if (verify && verifyBuffer) {
-            setMemoryBank(bank);
-            setMemoryStartAddress(address);
-            readRegisters(MPU6500_RA_MEM_R_W, chunkSize, verifyBuffer);
-            if (memcmp(progBuffer, verifyBuffer, chunkSize) != 0) {
-                /*Serial.print("Block write verification error, bank ");
-                Serial.print(bank, DEC);
-                Serial.print(", address ");
-                Serial.print(address, DEC);
-                Serial.print("!\nExpected:");
-                for (j = 0; j < chunkSize; j++) {
-                    Serial.print(" 0x");
-                    if (progBuffer[j] < 16) Serial.print("0");
-                    Serial.print(progBuffer[j], HEX);
-                }
-                Serial.print("\nReceived:");
-                for (uint8_t j = 0; j < chunkSize; j++) {
-                    Serial.print(" 0x");
-                    if (verifyBuffer[i + j] < 16) Serial.print("0");
-                    Serial.print(verifyBuffer[i + j], HEX);
-                }
-                Serial.print("\n");*/
-                free(verifyBuffer);
-                if (useProgMem) free(progBuffer);
-                return false; // uh oh.
-            }
-        }
-
-        // increase byte index by [chunkSize]
-        i += chunkSize;
-
-        // uint8_t automatically wraps to 0 at 256
-        address += chunkSize;
-
-        // if we aren't done, update bank (if necessary) and address
-        if (i < dataSize) {
-            if (address == 0) bank++;
-            setMemoryBank(bank);
-            setMemoryStartAddress(address);
-        }
-    }
-    if (verify) free(verifyBuffer);
-    if (useProgMem) free(progBuffer);
-    return true;
+//    setMemoryBank(bank);
+//    setMemoryStartAddress(address);
+//    uint8_t chunkSize;
+//    uint8_t *verifyBuffer=0;
+//    uint8_t *progBuffer=0;
+//    uint16_t i;
+//    uint8_t j;
+//    if (verify) verifyBuffer = (uint8_t *)malloc(MPU6500_DMP_MEMORY_CHUNK_SIZE);
+//    if (useProgMem) progBuffer = (uint8_t *)malloc(MPU6500_DMP_MEMORY_CHUNK_SIZE);
+//    for (i = 0; i < dataSize;) {
+//        // determine correct chunk size according to bank position and data size
+//        chunkSize = MPU6500_DMP_MEMORY_CHUNK_SIZE;
+//
+//        // make sure we don't go past the data size
+//        if (i + chunkSize > dataSize) chunkSize = dataSize - i;
+//
+//        // make sure this chunk doesn't go past the bank boundary (256 bytes)
+//        if (chunkSize > 256 - address) chunkSize = 256 - address;
+//
+//        if (useProgMem) {
+//            // write the chunk of data as specified
+//            for (j = 0; j < chunkSize; j++) progBuffer[j] = pgm_read_byte(data + i + j);
+//        } else {
+//            // write the chunk of data as specified
+//            progBuffer = (uint8_t *)data + i;
+//        }
+//
+//        writeRegisters(MPU6500_RA_MEM_R_W, chunkSize, progBuffer);
+//
+//        // verify data if needed
+//        if (verify && verifyBuffer) {
+//            setMemoryBank(bank);
+//            setMemoryStartAddress(address);
+//            readRegisters(MPU6500_RA_MEM_R_W, chunkSize, verifyBuffer);
+//            if (memcmp(progBuffer, verifyBuffer, chunkSize) != 0) {
+//                /*Serial.print("Block write verification error, bank ");
+//                Serial.print(bank, DEC);
+//                Serial.print(", address ");
+//                Serial.print(address, DEC);
+//                Serial.print("!\nExpected:");
+//                for (j = 0; j < chunkSize; j++) {
+//                    Serial.print(" 0x");
+//                    if (progBuffer[j] < 16) Serial.print("0");
+//                    Serial.print(progBuffer[j], HEX);
+//                }
+//                Serial.print("\nReceived:");
+//                for (uint8_t j = 0; j < chunkSize; j++) {
+//                    Serial.print(" 0x");
+//                    if (verifyBuffer[i + j] < 16) Serial.print("0");
+//                    Serial.print(verifyBuffer[i + j], HEX);
+//                }
+//                Serial.print("\n");*/
+//                free(verifyBuffer);
+//                if (useProgMem) free(progBuffer);
+//                return false; // uh oh.
+//            }
+//        }
+//
+//        // increase byte index by [chunkSize]
+//        i += chunkSize;
+//
+//        // uint8_t automatically wraps to 0 at 256
+//        address += chunkSize;
+//
+//        // if we aren't done, update bank (if necessary) and address
+//        if (i < dataSize) {
+//            if (address == 0) bank++;
+//            setMemoryBank(bank);
+//            setMemoryStartAddress(address);
+//        }
+//    }
+//    if (verify) free(verifyBuffer);
+//    if (useProgMem) free(progBuffer);
+//    return true;
 }
 bool MPU6500::writeProgMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify) {
     return writeMemoryBlock(data, dataSize, bank, address, verify, true);
 }
 
 bool MPU6500::writeDMPConfigurationSet(const uint8_t *data, uint16_t dataSize, bool useProgMem) {
-    uint8_t *progBuffer = 0;
-	uint8_t success, special;
-    uint16_t i, j;
-    if (useProgMem) {
-        progBuffer = (uint8_t *)malloc(8); // assume 8-byte blocks, realloc later if necessary
-    }
-
-    // config set data is a long string of blocks with the following structure:
-    // [bank] [offset] [length] [byte[0], byte[1], ..., byte[length]]
-    uint8_t bank, offset, length;
-    for (i = 0; i < dataSize;) {
-        if (useProgMem) {
-            bank = pgm_read_byte(data + i++);
-            offset = pgm_read_byte(data + i++);
-            length = pgm_read_byte(data + i++);
-        } else {
-            bank = data[i++];
-            offset = data[i++];
-            length = data[i++];
-        }
-
-        // write data or perform special action
-        if (length > 0) {
-            // regular block of data to write
-            /*Serial.print("Writing config block to bank ");
-            Serial.print(bank);
-            Serial.print(", offset ");
-            Serial.print(offset);
-            Serial.print(", length=");
-            Serial.println(length);*/
-            if (useProgMem) {
-                if (sizeof(progBuffer) < length) progBuffer = (uint8_t *)realloc(progBuffer, length);
-                for (j = 0; j < length; j++) progBuffer[j] = pgm_read_byte(data + i + j);
-            } else {
-                progBuffer = (uint8_t *)data + i;
-            }
-            success = writeMemoryBlock(progBuffer, length, bank, offset, true);
-            i += length;
-        } else {
-            // special instruction
-            // NOTE: this kind of behavior (what and when to do certain things)
-            // is totally undocumented. This code is in here based on observed
-            // behavior only, and exactly why (or even whether) it has to be here
-            // is anybody's guess for now.
-            if (useProgMem) {
-                special = pgm_read_byte(data + i++);
-            } else {
-                special = data[i++];
-            }
-            /*Serial.print("Special command code ");
-            Serial.print(special, HEX);
-            Serial.println(" found...");*/
-            if (special == 0x01) {
-                // enable DMP-related interrupts
-
-                //setIntZeroMotionEnabled(true);
-                //setIntFIFOBufferOverflowEnabled(true);
-                //setIntDMPEnabled(true);
-                writeRegByte(MPU6500_RA_INT_ENABLE, 0x32);  // single operation
-
-                success = true;
-            } else {
-                // unknown special command
-                success = false;
-            }
-        }
-
-        if (!success) {
-            if (useProgMem) free(progBuffer);
-            return false; // uh oh
-        }
-    }
-    if (useProgMem) free(progBuffer);
-    return true;
+//    uint8_t *progBuffer = 0;
+//	uint8_t success, special;
+//    uint16_t i, j;
+//    if (useProgMem) {
+//        progBuffer = (uint8_t *)malloc(8); // assume 8-byte blocks, realloc later if necessary
+//    }
+//
+//    // config set data is a long string of blocks with the following structure:
+//    // [bank] [offset] [length] [byte[0], byte[1], ..., byte[length]]
+//    uint8_t bank, offset, length;
+//    for (i = 0; i < dataSize;) {
+//        if (useProgMem) {
+//            bank = pgm_read_byte(data + i++);
+//            offset = pgm_read_byte(data + i++);
+//            length = pgm_read_byte(data + i++);
+//        } else {
+//            bank = data[i++];
+//            offset = data[i++];
+//            length = data[i++];
+//        }
+//
+//        // write data or perform special action
+//        if (length > 0) {
+//            // regular block of data to write
+//            /*Serial.print("Writing config block to bank ");
+//            Serial.print(bank);
+//            Serial.print(", offset ");
+//            Serial.print(offset);
+//            Serial.print(", length=");
+//            Serial.println(length);*/
+//            if (useProgMem) {
+//                if (sizeof(progBuffer) < length) progBuffer = (uint8_t *)realloc(progBuffer, length);
+//                for (j = 0; j < length; j++) progBuffer[j] = pgm_read_byte(data + i + j);
+//            } else {
+//                progBuffer = (uint8_t *)data + i;
+//            }
+//            success = writeMemoryBlock(progBuffer, length, bank, offset, true);
+//            i += length;
+//        } else {
+//            // special instruction
+//            // NOTE: this kind of behavior (what and when to do certain things)
+//            // is totally undocumented. This code is in here based on observed
+//            // behavior only, and exactly why (or even whether) it has to be here
+//            // is anybody's guess for now.
+//            if (useProgMem) {
+//                special = pgm_read_byte(data + i++);
+//            } else {
+//                special = data[i++];
+//            }
+//            /*Serial.print("Special command code ");
+//            Serial.print(special, HEX);
+//            Serial.println(" found...");*/
+//            if (special == 0x01) {
+//                // enable DMP-related interrupts
+//
+//                //setIntZeroMotionEnabled(true);
+//                //setIntFIFOBufferOverflowEnabled(true);
+//                //setIntDMPEnabled(true);
+//                writeRegByte(MPU6500_RA_INT_ENABLE, 0x32);  // single operation
+//
+//                success = true;
+//            } else {
+//                // unknown special command
+//                success = false;
+//            }
+//        }
+//
+//        if (!success) {
+//            if (useProgMem) free(progBuffer);
+//            return false; // uh oh
+//        }
+//    }
+//    if (useProgMem) free(progBuffer);
+//    return true;
 }
 bool MPU6500::writeProgDMPConfigurationSet(const uint8_t *data, uint16_t dataSize) {
     return writeDMPConfigurationSet(data, dataSize, true);
