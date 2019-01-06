@@ -1,8 +1,8 @@
 /**
   ******************************************************************************
-  * File Name          : gpio.h
-  * Description        : This file contains all the functions prototypes for 
-  *                      the gpio  
+  * File Name          : dma.c
+  * Description        : This file provides code for the configuration
+  *                      of all the requested memory to memory DMA transfers.
   ******************************************************************************
   ** This notice applies to any and all portions of this file
   * that are not between comment pairs USER CODE BEGIN and
@@ -36,32 +36,36 @@
   *
   ******************************************************************************
   */
-
-/* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __gpio_H
-#define __gpio_H
-#ifdef __cplusplus
- extern "C" {
-#endif
-
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
+#include "dma.h"
 
-/* USER CODE BEGIN Includes */
-/* USER CODE END Includes */
+/* USER CODE BEGIN 0 */
+/* USER CODE END 0 */
 
-/* USER CODE BEGIN Private defines */
-/* USER CODE END Private defines */
+/*----------------------------------------------------------------------------*/
+/* Configure DMA                                                              */
+/*----------------------------------------------------------------------------*/
 
-void MX_GPIO_Init(void);
+/* USER CODE BEGIN 1 */
+/* USER CODE END 1 */
 
-/* USER CODE BEGIN Prototypes */
-/* USER CODE END Prototypes */
+/** 
+  * Enable DMA controller clock
+  */
+void MX_DMA_Init(void) 
+{
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
-#ifdef __cplusplus
+  /* DMA interrupt init */
+  /* DMA1_Channel4_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_5_IRQn);
+
 }
-#endif
-#endif /*__ pinoutConfig_H */
+
+/* USER CODE BEGIN 2 */
+/* USER CODE END 2 */
 
 /**
   * @}

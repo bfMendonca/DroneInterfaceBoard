@@ -10,7 +10,7 @@
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * COPYRIGHT(c) 2018 STMicroelectronics
+  * COPYRIGHT(c) 2019 STMicroelectronics
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -47,14 +47,12 @@
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
-
 /* USER CODE END Includes */
 
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN Private defines */
-
 /* USER CODE END Private defines */
 
 void MX_TIM1_Init(void);
@@ -63,7 +61,6 @@ void MX_TIM3_Init(void);
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
                     
 /* USER CODE BEGIN Prototypes */
-
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

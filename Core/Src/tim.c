@@ -10,7 +10,7 @@
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * COPYRIGHT(c) 2018 STMicroelectronics
+  * COPYRIGHT(c) 2019 STMicroelectronics
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -41,7 +41,6 @@
 #include "tim.h"
 
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 TIM_HandleTypeDef htim1;
@@ -151,12 +150,10 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* tim_pwmHandle)
   if(tim_pwmHandle->Instance==TIM1)
   {
   /* USER CODE BEGIN TIM1_MspInit 0 */
-
   /* USER CODE END TIM1_MspInit 0 */
     /* TIM1 clock enable */
     __HAL_RCC_TIM1_CLK_ENABLE();
   /* USER CODE BEGIN TIM1_MspInit 1 */
-
   /* USER CODE END TIM1_MspInit 1 */
   }
 }
@@ -168,7 +165,6 @@ void HAL_TIM_IC_MspInit(TIM_HandleTypeDef* tim_icHandle)
   if(tim_icHandle->Instance==TIM3)
   {
   /* USER CODE BEGIN TIM3_MspInit 0 */
-
   /* USER CODE END TIM3_MspInit 0 */
     /* TIM3 clock enable */
     __HAL_RCC_TIM3_CLK_ENABLE();
@@ -186,7 +182,6 @@ void HAL_TIM_IC_MspInit(TIM_HandleTypeDef* tim_icHandle)
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN TIM3_MspInit 1 */
-
   /* USER CODE END TIM3_MspInit 1 */
   }
 }
@@ -197,7 +192,6 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)
   if(timHandle->Instance==TIM1)
   {
   /* USER CODE BEGIN TIM1_MspPostInit 0 */
-
   /* USER CODE END TIM1_MspPostInit 0 */
   
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -215,7 +209,6 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* timHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN TIM1_MspPostInit 1 */
-
   /* USER CODE END TIM1_MspPostInit 1 */
   }
 
@@ -227,12 +220,10 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* tim_pwmHandle)
   if(tim_pwmHandle->Instance==TIM1)
   {
   /* USER CODE BEGIN TIM1_MspDeInit 0 */
-
   /* USER CODE END TIM1_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM1_CLK_DISABLE();
   /* USER CODE BEGIN TIM1_MspDeInit 1 */
-
   /* USER CODE END TIM1_MspDeInit 1 */
   }
 }
@@ -243,7 +234,6 @@ void HAL_TIM_IC_MspDeInit(TIM_HandleTypeDef* tim_icHandle)
   if(tim_icHandle->Instance==TIM3)
   {
   /* USER CODE BEGIN TIM3_MspDeInit 0 */
-
   /* USER CODE END TIM3_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_TIM3_CLK_DISABLE();
@@ -255,13 +245,11 @@ void HAL_TIM_IC_MspDeInit(TIM_HandleTypeDef* tim_icHandle)
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_4|GPIO_PIN_5);
 
   /* USER CODE BEGIN TIM3_MspDeInit 1 */
-
   /* USER CODE END TIM3_MspDeInit 1 */
   }
 } 
 
 /* USER CODE BEGIN 1 */
-
 /* USER CODE END 1 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

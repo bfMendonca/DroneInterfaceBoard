@@ -7,6 +7,8 @@
 #include <string.h>
 #include <math.h>
 
+#include <DataTypes/SensorTypes.h>
+
 /**
  * This file was originally got from http://www.cs.cmu.edu/~cga/arduino/MPU6500.h.
  * The functions and the setup procedure was based on the files at https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
@@ -379,92 +381,7 @@
 /*-- This section is dedicated for some Setups. --*/
 #define BUFFER_SIZE 30
 
-
-
 namespace Sensors {
-
-template< typename Targ >
-class ThreeAxisReading {
-public:
-	ThreeAxisReading() :
-		m_x( Targ() ),
-		m_y( Targ() ),
-		m_z( Targ() ) {	}
-
-	ThreeAxisReading( const Targ &x, const Targ &y, const Targ &z ) :
-		m_x( x ),
-		m_y( y ),
-		m_z( z ) { }
-
-	inline const Targ & x() const { return m_x; };
-	inline const Targ & y() const { return m_y; };
-	inline const Targ & z() const { return m_z; };
-
-	inline void setX( const Targ & x ) { m_x = x; };
-	inline void setY( const Targ & y ) { m_y = y; };
-	inline void setZ( const Targ & z ) { m_z = z; };
-
-	inline Targ & rx() { return m_x; };
-	inline Targ & ry() { return m_y; };
-	inline Targ & rz() { return m_z; };
-
-
-private:
-	Targ m_x, m_y, m_z;
-};
-
-template< typename Targ >
-class ThreeAxisReadingsStamped : public ThreeAxisReading< Targ > {
-public:
-	ThreeAxisReadingsStamped() : ThreeAxisReading< Targ >(),
-			m_timeStamp() { }
-
-	ThreeAxisReadingsStamped( uint64_t initialTs ) : ThreeAxisReading< Targ >(),
-			m_timeStamp( initialTs ) { }
-
-	ThreeAxisReadingsStamped( const Targ &x, const Targ &y, const Targ &z, uint64_t initialTs = 0) : ThreeAxisReading< Targ >( x, y, z),
-			m_timeStamp( initialTs ) { }
-
-	inline void setTimeStamp( uint64_t timeStamp ) {
-		m_timeStamp = timeStamp;
-	}
-
-	inline const uint64_t & timeStamp() const { return m_timeStamp; };
-
-private:
-	uint64_t m_timeStamp;
-};
-
-template< typename Targ >
-class SingleValueReadingStamped {
-public:
-	SingleValueReadingStamped( ) :
-		m_value( Targ() ),
-		m_timeStamp( 0 ) { }
-
-	SingleValueReadingStamped( const Targ & value, uint64_t timeStamp  = 0 ) :
-		m_value( value ),
-		m_timeStamp( timeStamp ) { }
-
-	inline void setTimeStamp( uint64_t timeStamp ) {
-		m_timeStamp = timeStamp;
-	}
-
-	inline const uint64_t & timeStamp() const { return m_timeStamp; };
-
-	inline Targ & rValue() { return m_value; };
-
-	inline void setValue( const Targ & value ) {
-		m_value = value;
-	}
-
-	inline const Targ & value() const { return m_value; };
-
-private:
-	Targ m_value;
-	uint64_t m_timeStamp;
-};
-
 class MPU6500 {
 
 public:
@@ -926,10 +843,15 @@ public:
 	void setDMPConfig2(uint8_t config);
 
 private:
+	/*--- Methods based on
+	 * https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/MPU6050.h
+	 * Those methods were based on the above github but modified in order for allowing use of the STM32 SPI Library
+	 * for interface
+	 */
+
 	void readRegisters( uint8_t reg, size_t size, uint8_t data[] );
 	void writeRegisters( uint8_t reg,  uint8_t data[], size_t size );
 
-	/*--- Essas funções precisam ser implementadas ---*/
 	void readRegBit( uint8_t reg, uint8_t bitPos, uint8_t *data );
 	void writeRegBit( uint8_t reg, uint8_t bitPos, uint8_t data );
 
@@ -939,11 +861,6 @@ private:
 	void readRegByte( uint8_t reg, uint8_t *data );
 	void writeRegByte( uint8_t reg, uint8_t data );
 
-	/*--- Methods based on
-	 * https://github.com/jrowberg/i2cdevlib/blob/master/Arduino/MPU6050/MPU6050.h
-	 * Those methods were based on the above github but modified in order for allowing use of the STM32 SPI Library
-	 * for interface
-	 */
 	bool testConnection();
 
 	// AUX_VDDIO register
@@ -975,9 +892,9 @@ private:
 		for( size_t i = 0; i < BUFFER_SIZE; ++i ) {
 			m_txBuffer[i] = 0;
 			m_rxBuffer[i] = 0;
+			buffer[i] = 0;
 		}
 	}
-
 
 	/*-- Variables. --*/
 	SPI_HandleTypeDef & m_spi;
@@ -1004,7 +921,6 @@ private:
 	float m_tempScale;
 
 	/*--- Variáveis que armazenam configurações e leituras. ---*/
-
 	ThreeAxisReadingsStamped< int16_t > m_rawAccel;
 	ThreeAxisReadingsStamped< int16_t > m_rawGyro;
 	SingleValueReadingStamped< int16_t > m_rawTemp;

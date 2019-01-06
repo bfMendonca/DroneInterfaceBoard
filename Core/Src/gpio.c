@@ -10,7 +10,7 @@
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * COPYRIGHT(c) 2018 STMicroelectronics
+  * COPYRIGHT(c) 2019 STMicroelectronics
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -40,14 +40,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "gpio.h"
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /*----------------------------------------------------------------------------*/
 /* Configure GPIO                                                             */
 /*----------------------------------------------------------------------------*/
 /* USER CODE BEGIN 1 */
-
 /* USER CODE END 1 */
 
 /** Configure pins as 
@@ -70,10 +68,10 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(HMC5883L_Cs_GPIO_Port, HMC5883L_Cs_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, MPU6500_CS_Pin|BMP280_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, MPU6500_CS_Pin|BMP280_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : PA0 PA1 */
   GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
@@ -83,37 +81,31 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PtPin */
-  GPIO_InitStruct.Pin = HMC5883L_Cs_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(HMC5883L_Cs_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PAPin PAPin */
-  GPIO_InitStruct.Pin = HMC5883L_INT_Pin|MPU6500_INT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pins : PBPin PBPin */
   GPIO_InitStruct.Pin = MPU6500_CS_Pin|BMP280_CS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PtPin */
-  GPIO_InitStruct.Pin = BMP280_INT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(BMP280_INT_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = HCM5883L_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(HCM5883L_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PtPin */
-  GPIO_InitStruct.Pin = BAT_ANALOG_INPUT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pin = MPU6500_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(BAT_ANALOG_INPUT_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(MPU6500_INT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PtPin */
+  GPIO_InitStruct.Pin = HMC5883L_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(HMC5883L_INT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 1, 0);
@@ -122,7 +114,6 @@ void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 2 */
-
 /* USER CODE END 2 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

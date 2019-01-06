@@ -1,45 +1,10 @@
 /* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  ** This notice applies to any and all portions of this file
-  * that are not between comment pairs USER CODE BEGIN and
-  * USER CODE END. Other portions of this file, whether 
-  * inserted by the user or by software development tools
-  * are owned by their respective copyright owners.
-  *
-  * COPYRIGHT(c) 2018 STMicroelectronics
-  *
-  * Redistribution and use in source and binary forms, with or without modification,
-  * are permitted provided that the following conditions are met:
-  *   1. Redistributions of source code must retain the above copyright notice,
-  *      this list of conditions and the following disclaimer.
-  *   2. Redistributions in binary form must reproduce the above copyright notice,
-  *      this list of conditions and the following disclaimer in the documentation
-  *      and/or other materials provided with the distribution.
-  *   3. Neither the name of STMicroelectronics nor the names of its contributors
-  *      may be used to endorse or promote products derived from this software
-  *      without specific prior written permission.
-  *
-  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-  * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-  *
-  ******************************************************************************
-  */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "crc.h"
+#include "dma.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -48,41 +13,38 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "MPU6500/MPU6500.h"
-
+#include "HMC5983/HMC5983.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-/* Private variables ---------------------------------------------------------*/
+
 Sensors::MPU6500 *m_mpu6500 = nullptr;
+Sensors::HMC5983 *m_hmc5983 = nullptr;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-/* Private function prototypes -----------------------------------------------*/
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
 /* USER CODE END 0 */
 
 /**
@@ -92,7 +54,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -101,52 +62,34 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
+  MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 
-  m_mpu6500 = new Sensors::MPU6500( hspi1, MPU6500_CS_GPIO_Port, MPU6500_CS_Pin );
+  HAL_GPIO_WritePin(HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin, GPIO_PIN_SET );
+  HAL_GPIO_WritePin(MPU6500_CS_GPIO_Port, MPU6500_CS_Pin, GPIO_PIN_SET );
+  HAL_GPIO_WritePin(BMP280_CS_GPIO_Port, BMP280_CS_Pin, GPIO_PIN_SET );
 
+  HAL_Delay( 10 );
 
-//  m_mpu6500.setAccelFIFOEnabled( true );
-//  m_mpu6500.setFSyncInterruptEnabled( true );
-//  m_mpu6500.setInterruptDrive( false );
-//  m_mpu6500.setInterruptLatch( false );
+  m_mpu6500 = new Sensors::MPU6500( hspi1,  MPU6500_CS_GPIO_Port, MPU6500_CS_Pin );
+  m_mpu6500->startReading();
 
-  char buffer[120];
-  sprintf( buffer, "\rIniciando dispositivo\n" );
-  HAL_UART_Transmit( &huart2, (uint8_t *)buffer, strlen(buffer), 1000 );
-
-//  if( m_mpu6500->testConnection() ) {
-//	  sprintf( buffer, "\rMPU 6500 Conectado\n\r" );
-//  }else {
-//	  sprintf( buffer, "\rMPU 6500 Não Conectado\n\r" );
-//  }
-//  HAL_UART_Transmit( &huart2, (uint8_t *)buffer, strlen(buffer), 1000 );
-
-
-//  m_mpu6500->setXGyroFIFOEnabled( true );
-//  m_mpu6500->setYGyroFIFOEnabled( true );
-//  m_mpu6500->setZGyroFIFOEnabled( true );
-//  m_mpu6500->setAccelFIFOEnabled( true );
-//  m_mpu6500->setTempFIFOEnabled( true );
-  //m_mpu6500->setRate( 0x07 );
-
-  //Agora vamos alterar o baudrate da SPI para podermos ler em velocidades maiores
+  m_hmc5983 = new Sensors::HMC5983( hspi1, HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin );
 
   HAL_SPI_DeInit( &hspi1 );
   hspi1.Instance = SPI1;
@@ -168,36 +111,19 @@ int main(void)
     Error_Handler();
   }
 
-  m_mpu6500->startReading();
-
-  Sensors::ThreeAxisReadingsStamped< float > gyro;
-  Sensors::ThreeAxisReadingsStamped< float > accel;
-  Sensors::SingleValueReadingStamped< float > temp;
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-	  accel = m_mpu6500->getAccel();
-	  gyro = m_mpu6500->getGyro();
-	  temp = m_mpu6500->getTemp();
+  uint8_t texto[] = "\roi\n";
 
-	  //m_mpu6500->getRawReadings( ax, ay, az, gx, gy, gz, temperature);
-	  sprintf(buffer,  "\r ax: %.2f \t ay: %.2f \t az: %.2f \t "
-			  	  	  	  "gx: %.2f \t gy: %.2f \t gz: %.2f \t temp: %.2f \n",
-						  accel.x(), accel.y(), accel.z(),
-						  gyro.x(), gyro.y(), gyro.z(),
-						  temp.value() );
-
-	  HAL_UART_Transmit( &huart2, (uint8_t *)buffer, strlen(buffer), 1000 );
-	  HAL_Delay( 100 );
+  while(true) {
+	  HAL_UART_Transmit(&huart2, texto, 4, 1000 );
+	  HAL_Delay( 10 );
+  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-  }
   /* USER CODE END 3 */
 }
 
@@ -239,17 +165,16 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	static uint8_t prescaler = 0x00;
 	if( GPIO_Pin == MPU6500_INT_Pin ) {
-		if( m_mpu6500 ) {
-			if( ++prescaler == 3 ) {
-				prescaler = 0x00;
-				m_mpu6500->intCallback();
-			}
+		if( m_mpu6500 != nullptr ) {
+			m_mpu6500->intCallback();
+		}
+	}else if( GPIO_Pin == HMC5883L_INT_Pin ) {
+		if( m_hmc5983 != nullptr ) {
+			m_hmc5983->intCallback();
 		}
 	}
 }
-
 /* USER CODE END 4 */
 
 /**
@@ -259,10 +184,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  while(1)
-  {
-  }
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -277,8 +198,6 @@ void Error_Handler(void)
 void assert_failed(char *file, uint32_t line)
 { 
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

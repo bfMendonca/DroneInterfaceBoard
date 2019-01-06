@@ -184,7 +184,7 @@ void MPU6500::intCallback() {
 	}
 }
 
-/** Verify the I2C connection.
+/** Verify the SPI connection.
  * Make sure the device is connected and responds as expected.
  * @return True if connection is valid, false otherwise
  */
@@ -3178,7 +3178,10 @@ bool MPU6500::writeMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t b
 //    if (verify) free(verifyBuffer);
 //    if (useProgMem) free(progBuffer);
 //    return true;
+
+	return false;
 }
+
 bool MPU6500::writeProgMemoryBlock(const uint8_t *data, uint16_t dataSize, uint8_t bank, uint8_t address, bool verify) {
     return writeMemoryBlock(data, dataSize, bank, address, verify, true);
 }
@@ -3258,7 +3261,9 @@ bool MPU6500::writeDMPConfigurationSet(const uint8_t *data, uint16_t dataSize, b
 //    }
 //    if (useProgMem) free(progBuffer);
 //    return true;
+	return false;
 }
+
 bool MPU6500::writeProgDMPConfigurationSet(const uint8_t *data, uint16_t dataSize) {
     return writeDMPConfigurationSet(data, dataSize, true);
 }
