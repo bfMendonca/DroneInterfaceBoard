@@ -31,6 +31,7 @@ void PendSV_Handler(void);
 void SysTick_Handler(void);
 void EXTI4_15_IRQHandler(void);
 void DMA1_Channel4_5_IRQHandler(void);
+void USART2_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 /* USER CODE END EFP */
 
