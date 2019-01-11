@@ -116,14 +116,14 @@ public:
 	};
 
 	enum Range {
-		SCALE_00_88_GA = 0x00,	//0.88 Gauss
-		SCALE_01_30_GA = 0x01,  //1.30 Gauss
-		SCALE_01_90_GA = 0x02,	//1.90 Gauss
-		SCALE_02_50_GA = 0x03,	//2.50 Gauss
-		SCALE_04_00_GA = 0x04,	//4.00 Gauss
-		SCALE_04_70_GA = 0x05,	//4.70 Gauss
-		SCALE_05_60_GA = 0x06,	//5.60 Gauss
-		SCALE_08_10_GA = 0x07,	//8.10 Gauss
+		SCALE_00_88_GA = 0x00,	//0.88 Gauss recomended field
+		SCALE_01_30_GA = 0x01,  //1.30 Gauss recomended field
+		SCALE_01_90_GA = 0x02,	//1.90 Gauss recomended field
+		SCALE_02_50_GA = 0x03,	//2.50 Gauss recomended field
+		SCALE_04_00_GA = 0x04,	//4.00 Gauss recomended field
+		SCALE_04_70_GA = 0x05,	//4.70 Gauss recomended field
+		SCALE_05_60_GA = 0x06,	//5.60 Gauss recomended field
+		SCALE_08_10_GA = 0x07,	//8.10 Gauss recomended field
 	};
 
 	HMC5983( SPI_HandleTypeDef &spi, GPIO_TypeDef *csPort, uint16_t csPin );
@@ -141,19 +141,6 @@ public:
 
 	void intCallback();
 
-private:
-
-	void readRegisters( uint8_t reg, size_t size, uint8_t data[], bool autoIncAddress = true );
-	void writeRegisters( uint8_t reg,  uint8_t data[], size_t size, bool autoIncAddress = true );
-
-	void readRegBit( uint8_t reg, uint8_t bitPos, bool &state);
-	void writeRegBit( uint8_t reg, uint8_t bitPos, bool state );
-
-	void readRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t &data );
-	void writeRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t data );
-
-	void readRegByte( uint8_t reg, uint8_t *data );
-	void writeRegByte( uint8_t reg, uint8_t data );
 
 	inline const ThreeAxisReadingsStamped< int16_t > & getMagRaw() const {
 		return m_rawMag;
@@ -171,6 +158,19 @@ private:
 		return m_temp;
 	}
 
+private:
+
+	void readRegisters( uint8_t reg, size_t size, uint8_t data[], bool autoIncAddress = true );
+	void writeRegisters( uint8_t reg,  uint8_t data[], size_t size, bool autoIncAddress = true );
+
+	void readRegBit( uint8_t reg, uint8_t bitPos, bool &state);
+	void writeRegBit( uint8_t reg, uint8_t bitPos, bool state );
+
+	void readRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t &data );
+	void writeRegBits( uint8_t reg, uint8_t bitPos, uint8_t bitsLenght, uint8_t data );
+
+	void readRegByte( uint8_t reg, uint8_t *data );
+	void writeRegByte( uint8_t reg, uint8_t data );
 
 	bool testConnection();
 

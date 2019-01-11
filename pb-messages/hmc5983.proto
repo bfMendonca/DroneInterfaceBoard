@@ -1,0 +1,9 @@
+syntax = "proto2";
+
+import "vector3.proto";
+
+message HMC5983Readings {
+	required Vector3 magnetometer = 1;  
+	required float	temperature = 2;
+	required uint64 timestamp = 3; 
+}

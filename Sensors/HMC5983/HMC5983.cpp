@@ -53,6 +53,44 @@ void HMC5983::setMeasurementConfig( bool tempCompensated, Samples samples, Rate 
 
 void HMC5983::setFullScaleRange( Range range ) {
 
+	switch( range ) {
+	case SCALE_00_88_GA:
+		m_scale = 1.49431; //
+		break;
+
+	case SCALE_01_30_GA:
+		m_scale = 1.88324;
+		break;
+
+	case SCALE_01_90_GA:
+		m_scale = 2.4973;
+		break;
+
+	case SCALE_02_50_GA:
+		m_scale = 3.11144;
+		break;
+
+	case SCALE_04_00_GA:
+		m_scale = 4.64669;
+		break;
+
+	case SCALE_04_70_GA:
+		m_scale = 5.26079;
+		break;
+
+	case SCALE_05_60_GA:
+		m_scale = 6.20241;
+		break;
+
+	case SCALE_08_10_GA:
+		m_scale = 8.90445;
+		break;
+
+	default:
+		range = SCALE_01_30_GA;
+		m_scale = 1.88324;
+	}
+
 	uint8_t rawScale = static_cast< uint8_t >( range );
 
 	uint8_t data = rawScale << ( HMC5983_CONF_B_GAIN_BIT - ( HMC5983_CONF_B_GAIN_LENGTH -1 ) );
@@ -61,6 +99,9 @@ void HMC5983::setFullScaleRange( Range range ) {
 	data &= 0xE0;
 
 	writeRegByte( HMC5983_CONF_B, data );
+
+	//Saving the rate in order to convert the data
+
 }
 
 void HMC5983::setOperationState( OperatingMode mode ) {
@@ -201,21 +242,21 @@ void HMC5983::intCallback() {
 	uint32_t ts = HAL_GetTick();
 	readRegisters( HMC5983_XOUT_H, 6, buffer, true );
 
-	m_rawMag.rx() =	(((int16_t)buffer[8]) << 8) | buffer[9];
-	m_rawMag.rz() = (((int16_t)buffer[10]) << 8) | buffer[11];
-	m_rawMag.ry() = (((int16_t)buffer[12]) << 8) | buffer[13];
+	m_rawMag.rx() =	(((int16_t)buffer[0]) << 8) | buffer[1];
+	m_rawMag.rz() = (((int16_t)buffer[2]) << 8) | buffer[3];
+	m_rawMag.ry() = (((int16_t)buffer[4]) << 8) | buffer[5];
 
 	//Let's convert the values using the full-scale setup
-	m_mag.setX( m_rawMag.x()*m_scale/32768.0 );
-	m_mag.setY( m_rawMag.y()*m_scale/32768.0 );
-	m_mag.setZ( m_rawMag.z()*m_scale/32768.0 );
+	m_mag.setX( m_rawMag.x()*m_scale/2048.0 );
+	m_mag.setY( m_rawMag.y()*m_scale/2048.0 );
+	m_mag.setZ( m_rawMag.z()*m_scale/2048.0 );
 
 
 	readRegisters( HMC5983_TEMP_H, 2, buffer, true );
 	m_rawTemp.rValue() = 	(((int16_t)buffer[0]) << 8) | buffer[1];
 
 	//Get the temperature
-	m_temp = m_rawTemp.value()*100.0/32768.0 + 21.0;	//98.146 é o fundo de escala, na teoria
+	m_temp = m_rawTemp.value()*100.0/32768.0 + 21.0;
 
 	m_rawMag.setTimeStamp( ts );
 	m_mag.setTimeStamp( ts );
