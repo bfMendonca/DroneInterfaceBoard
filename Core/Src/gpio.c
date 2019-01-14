@@ -54,8 +54,6 @@
         * Output
         * EVENT_OUT
         * EXTI
-     PA0   ------> S_TIM2_CH1_ETR
-     PA1   ------> S_TIM2_CH2
 */
 void MX_GPIO_Init(void)
 {
@@ -69,14 +67,6 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, MPU6500_CS_Pin|HCM5883L_CS_Pin|BMP280_CS_Pin, GPIO_PIN_SET);
-
-  /*Configure GPIO pins : PA0 PA1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PBPin PBPin PBPin */
   GPIO_InitStruct.Pin = MPU6500_CS_Pin|HCM5883L_CS_Pin|BMP280_CS_Pin;

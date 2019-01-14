@@ -1,0 +1,8 @@
+syntax = "proto2";
+
+message MotorsInterfaceMessage {
+	required float motor1DC = 1;  
+	required float motor2Dc = 2;
+	required float motor3DC = 3; 
+	required float motor4DC = 4; 
+}

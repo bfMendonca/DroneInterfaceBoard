@@ -1,0 +1,8 @@
+syntax = "proto2";
+
+message JoystickReadings {
+	required sint32 channel1Reading = 1;  
+	required sint32 channel2Reading = 2;
+	required sint32 channel3Reading = 3; 
+	required sint32 channel4Reading = 4; 
+}

@@ -37,6 +37,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define MCO_Pin GPIO_PIN_0
 #define MCO_GPIO_Port GPIOF
+#define JOYSTICK_CHANNEL_1_Pin GPIO_PIN_0
+#define JOYSTICK_CHANNEL_1_GPIO_Port GPIOA
+#define JOYSTICK_CHANNEL_2_Pin GPIO_PIN_1
+#define JOYSTICK_CHANNEL_2_GPIO_Port GPIOA
 #define VCP_TX_Pin GPIO_PIN_2
 #define VCP_TX_GPIO_Port GPIOA
 #define MPU6500_CS_Pin GPIO_PIN_0
@@ -62,6 +66,10 @@ void Error_Handler(void);
 #define VCP_RX_GPIO_Port GPIOA
 #define BMP280_CS_Pin GPIO_PIN_3
 #define BMP280_CS_GPIO_Port GPIOB
+#define JOYSTICK_CHANNEL_4_Pin GPIO_PIN_4
+#define JOYSTICK_CHANNEL_4_GPIO_Port GPIOB
+#define JOYSTICK_CHANNEL_3_Pin GPIO_PIN_5
+#define JOYSTICK_CHANNEL_3_GPIO_Port GPIOB
 #define HMC5883L_INT_Pin GPIO_PIN_6
 #define HMC5883L_INT_GPIO_Port GPIOB
 #define HMC5883L_INT_EXTI_IRQn EXTI4_15_IRQn
