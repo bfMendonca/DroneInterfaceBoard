@@ -65,8 +65,6 @@ bool USARTInterface< Tx_Size, Rx_Size >::appendDataToSend( const uint8_t *data, 
 
 template< size_t Tx_Size, size_t Rx_Size >
 void USARTInterface< Tx_Size, Rx_Size >::txCallback() {
-	m_txOngoing = false;
-
 	//Let's check if we have more data to send
 
 	size_t size = m_outputBuffer.size();
@@ -87,6 +85,8 @@ void USARTInterface< Tx_Size, Rx_Size >::txCallback() {
 		HAL_UART_Transmit_DMA( m_huart, m_dmaOutputBuffer, toSendDataSize );
 
 		m_txOngoing = true;
+	}else {
+		m_txOngoing = false;	
 	}
 }
 
