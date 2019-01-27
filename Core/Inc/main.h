@@ -43,6 +43,8 @@ void Error_Handler(void);
 #define JOYSTICK_CHANNEL_2_GPIO_Port GPIOA
 #define VCP_TX_Pin GPIO_PIN_2
 #define VCP_TX_GPIO_Port GPIOA
+#define VCP_RX_Pin GPIO_PIN_3
+#define VCP_RX_GPIO_Port GPIOA
 #define MPU6500_CS_Pin GPIO_PIN_0
 #define MPU6500_CS_GPIO_Port GPIOB
 #define HCM5883L_CS_Pin GPIO_PIN_1
@@ -62,8 +64,6 @@ void Error_Handler(void);
 #define SWDIO_GPIO_Port GPIOA
 #define SWCLK_Pin GPIO_PIN_14
 #define SWCLK_GPIO_Port GPIOA
-#define VCP_RX_Pin GPIO_PIN_15
-#define VCP_RX_GPIO_Port GPIOA
 #define BMP280_CS_Pin GPIO_PIN_3
 #define BMP280_CS_GPIO_Port GPIOB
 #define JOYSTICK_CHANNEL_4_Pin GPIO_PIN_4
