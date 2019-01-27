@@ -66,6 +66,11 @@ Sensors::ThreeAxisReadingsStamped<float> mag;
 Sensors::SingleValueReadingStamped< float > magTemperature;
 
 
+uint8_t josystickBuffer[50];
+pb_ostream_t joystickStream = pb_ostream_from_buffer( josystickBuffer, 50 );
+JoystickReadings joystickMessage = JoystickReadings_init_zero;
+
+
 uint8_t motorInputBuffer[50];
 pb_istream_t motorInterface = pb_istream_from_buffer( motorInputBuffer, 50 );
 MotorsInterfaceMessage motorsInterfaceMessage = MotorsInterfaceMessage_init_zero;
@@ -295,7 +300,24 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		}
 
 		if( joystickPrescalerSender == 220 ) {
+			size_t message_length = 0x00;
+			joystickStream = pb_ostream_from_buffer( josystickBuffer+4, 50 );
+			pb_encode( &joystickStream, JoystickReadings_fields, &joystickMessage );
+			message_length = joystickStream.bytes_written;
 
+			josystickBuffer[ 0 ] = 0xAA;
+			josystickBuffer[ 1 ] = 0xBB;
+			josystickBuffer[ 2 ] = 0xCC;
+			josystickBuffer[ 3 ] = 0x03;
+			message_length += 4;
+
+			josystickBuffer[ message_length++ ] = '*';
+			josystickBuffer[ message_length++ ] = 'F';
+			josystickBuffer[ message_length++ ] = 'I';
+			josystickBuffer[ message_length++ ] = 'M';
+			josystickBuffer[ message_length++ ] = '\0';
+
+			m_interface->appendDataToSend( josystickBuffer, message_length );
 		}
 	}
 }
@@ -378,7 +400,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 		}
 	}
 
-	for( int i = 0; i < 0x03; ++i ) {
+	for( int i = 0; i < 0x04; ++i ) {
 		if( i == ( channel - 1 ) ) {
 
 			if( joyStickState[i] ) {
@@ -402,8 +424,10 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 		}
 	}
 
-	volatile uint8_t counter = 0;
-	++counter;
+	joystickMessage.channel1Reading = periods[0];
+	joystickMessage.channel2Reading = periods[1];
+	joystickMessage.channel3Reading = periods[2];
+	joystickMessage.channel4Reading = periods[3];
 }
 
 
