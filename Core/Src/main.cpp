@@ -152,6 +152,12 @@ int main(void)
   HAL_TIM_Base_Start( &htim1 );
   HAL_TIM_Base_Start_IT( &htim14 );
 
+  HAL_TIM_IC_Start_IT( &htim2, TIM_CHANNEL_1 );
+  HAL_TIM_IC_Start_IT( &htim2, TIM_CHANNEL_2 );
+
+  HAL_TIM_IC_Start_IT( &htim3, TIM_CHANNEL_1 );
+  HAL_TIM_IC_Start_IT( &htim3, TIM_CHANNEL_2 );
+
   while(true) {
 
   }
@@ -337,17 +343,67 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	}
 
 	if( status ) {
-		++teste;
-		__IO uint16_t m1, m2, m3, m4;
+		uint16_t m1, m2, m3, m4;
 
 		m1 = motorsInterfaceMessage.motor1DC;
 		m2 = motorsInterfaceMessage.motor2Dc;
 		m3 = motorsInterfaceMessage.motor3DC;
 		m4 = motorsInterfaceMessage.motor4DC;
-	}else {
-		++teste;
+	}
+}
+
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+	static bool joyStickState[4] = { false, false, false, false };
+	static uint16_t joyValues[4] = { 0x0000, 0x0000, 0x0000, 0x0000 };
+	volatile static uint16_t periods[4] = { 0x0000, 0x0000, 0x0000, 0x0000 };
+
+	uint8_t channel = 0xFF;
+	uint16_t value;
+
+	if( htim == &htim2 ) {
+		if( htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 ) {
+			channel = 0x01;
+			value = htim->Instance->CCR1;
+		}else if( htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2 ) {
+			channel = 0x02;
+			value = htim->Instance->CCR2;
+		}
+	}else if( htim == &htim3 ) {
+		if( htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1 ) {
+			channel = 0x03;
+			value = htim->Instance->CCR1;
+		}else if( htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2 ){
+			channel = 0x04;
+			value = htim->Instance->CCR2;
+		}
 	}
 
+	for( int i = 0; i < 0x03; ++i ) {
+		if( i == ( channel - 1 ) ) {
+
+			if( joyStickState[i] ) {
+				if( value > joyValues[i] ) {
+					periods[i] = value - joyValues[i];
+				}else {
+					periods[i] = value - joyValues[i] + 65536;
+				}
+
+				joyStickState[i] = false;
+				joyValues[i] = 0x0000;
+
+			}else {
+				joyStickState[i] = true;
+				joyValues[i] = value;
+			}
+
+		}else {
+			joyStickState[i] = false;
+			joyValues[i] = 0x0000;
+		}
+	}
+
+	volatile uint8_t counter = 0;
+	++counter;
 }
 
 
