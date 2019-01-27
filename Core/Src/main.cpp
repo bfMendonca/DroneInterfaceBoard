@@ -15,6 +15,8 @@
 #include "MPU6500/MPU6500.h"
 #include "HMC5983/HMC5983.h"
 
+#include "USARTInterface.h"
+
 #include "mpu6500.pb.h"
 #include "hmc5983.pb.h"
 #include "JoystickReadings.pb.h"
@@ -43,12 +45,12 @@
 
 Sensors::MPU6500 *m_mpu6500 = nullptr;
 Sensors::HMC5983 *m_hmc5983 = nullptr;
+Comm::USARTInterface<100, 100> *m_interface = nullptr;
 
 uint8_t mpuPrescalerSender = 0x00;
 uint8_t magPrescalerSender = 0x00;
 uint8_t joystickPrescalerSender = 0x00;
 
-uint8_t receiveBuffer[50];
 
 uint8_t gyroBuffer[120];
 pb_ostream_t mpuStream = pb_ostream_from_buffer(gyroBuffer, 120);
@@ -76,6 +78,8 @@ void SystemClock_Config(void);
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
 
 /* USER CODE END PFP */
 
@@ -125,23 +129,20 @@ int main(void)
   HAL_Delay( 10 );
 
   m_mpu6500 = new Sensors::MPU6500( hspi1,  MPU6500_CS_GPIO_Port, MPU6500_CS_Pin );
-  m_mpu6500->startReading();
-
   m_hmc5983 = new Sensors::HMC5983( hspi1, HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin );
 
+  m_interface = new Comm::USARTInterface<100, 100>( &huart2 );
+
+  m_mpu6500->startReading();
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   if (HAL_SPI_Init(&hspi1) != HAL_OK) {
     Error_Handler();
   }
 
-  HAL_UART_Receive_DMA( &huart2, receiveBuffer, 50 );
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t startMessage[] = "\rIniciando\b";
-  HAL_UART_Transmit(&huart2, startMessage, 11, 1000 );
 
   HAL_TIM_PWM_Start( &htim1, TIM_CHANNEL_1 );
   HAL_TIM_PWM_Start( &htim1, TIM_CHANNEL_2 );
@@ -207,6 +208,11 @@ void usartReceiveTransferDMACallBack( DMA_HandleTypeDef *hdma) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if( htim == &htim14 ) {
+
+		if( m_interface == nullptr ) {
+			return;
+		}
+
 		++mpuPrescalerSender;
 		++magPrescalerSender;
 		++joystickPrescalerSender;
@@ -246,7 +252,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			gyroBuffer[ message_length++ ] = 'M';
 			gyroBuffer[ message_length++ ] = '\0';
 
-			HAL_UART_Transmit_DMA( &huart2, gyroBuffer, message_length );
+			m_interface->appendDataToSend( gyroBuffer, message_length );
 		}
 
 		if( magPrescalerSender == 50 ) {
@@ -279,7 +285,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			magBuffer[ message_length++ ] = 'M';
 			magBuffer[ message_length++ ] = '\0';
 
-			//HAL_UART_Transmit(&huart2, magBuffer, message_length, 1000 );
+			m_interface->appendDataToSend( magBuffer, message_length );
 		}
 
 		if( joystickPrescalerSender == 220 ) {
@@ -312,11 +318,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	}
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	__IO uint8_t teste = 0x00;
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	if( m_interface != nullptr ) {
+		m_interface->txCallback();
+	}
+}
 
-	__IO uint8_t count = huart->RxXferCount;
-	__IO uint8_t size = huart->RxXferSize;
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	uint8_t *received = huart->pRxBuffPtr;
 
 	bool status = false;
