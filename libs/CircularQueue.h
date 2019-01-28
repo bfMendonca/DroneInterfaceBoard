@@ -11,7 +11,6 @@
 #include <ctype.h>
 #include <stddef.h>
 
-
 namespace Containers {
 
 template< class Type, size_t Size >

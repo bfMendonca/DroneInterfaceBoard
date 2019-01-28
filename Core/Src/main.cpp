@@ -16,6 +16,7 @@
 #include "HMC5983/HMC5983.h"
 
 #include "USARTInterface.h"
+#include "USARTMessageDecoder.h"
 
 #include "mpu6500.pb.h"
 #include "hmc5983.pb.h"
@@ -46,11 +47,11 @@
 Sensors::MPU6500 *m_mpu6500 = nullptr;
 Sensors::HMC5983 *m_hmc5983 = nullptr;
 Comm::USARTInterface<100, 100> *m_interface = nullptr;
+Comm::USARTMessageDecoder *m_decoder = nullptr;
 
 uint8_t mpuPrescalerSender = 0x00;
 uint8_t magPrescalerSender = 0x00;
 uint8_t joystickPrescalerSender = 0x00;
-
 
 uint8_t gyroBuffer[120];
 pb_ostream_t mpuStream = pb_ostream_from_buffer(gyroBuffer, 120);
@@ -75,6 +76,7 @@ uint8_t motorInputBuffer[50];
 pb_istream_t motorInterface = pb_istream_from_buffer( motorInputBuffer, 50 );
 MotorsInterfaceMessage motorsInterfaceMessage = MotorsInterfaceMessage_init_zero;
 
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -83,6 +85,7 @@ void SystemClock_Config(void);
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart);
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim);
 
@@ -137,6 +140,7 @@ int main(void)
   m_hmc5983 = new Sensors::HMC5983( hspi1, HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin );
 
   m_interface = new Comm::USARTInterface<100, 100>( &huart2 );
+  m_decoder = new Comm::USARTMessageDecoder();
 
   m_mpu6500->startReading();
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
@@ -209,13 +213,6 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void usartReceiveTransferDMACallBack( DMA_HandleTypeDef *hdma) {
-	__IO uint8_t teste = 0x00;
-
-	++teste;
-
-
-}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if( htim == &htim14 ) {
@@ -352,26 +349,24 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
 	}
 }
 
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	uint8_t *received = huart->pRxBuffPtr;
+	if( m_interface != nullptr ) {
+		m_interface->rxCallback();
 
-	bool status = false;
+		//Not optimal, but will decode right here
+		uint8_t data[100];
+		size_t size = 0;
 
-	if( ( received[0] == 0xAA ) && ( received[1] == 0xBB ) && ( received[2] == 0xCC ) ) {
-		if( received[3] == 0x99 ) {
-			motorInterface = pb_istream_from_buffer( received+4, 20 );
-			status = pb_decode( &motorInterface, MotorsInterfaceMessage_fields, &motorsInterfaceMessage );
-		}
+		m_interface->getReceivedData( data, size, 100 );
+		m_decoder->appendDataToDecode( data, size );
 	}
+}
 
-	if( status ) {
-		uint16_t m1, m2, m3, m4;
-
-		m1 = motorsInterfaceMessage.motor1DC;
-		m2 = motorsInterfaceMessage.motor2Dc;
-		m3 = motorsInterfaceMessage.motor3DC;
-		m4 = motorsInterfaceMessage.motor4DC;
-	}
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart) {
+//	if( m_interface != nullptr ) {
+//		m_interface->rxCallback();
+//	}
 }
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
