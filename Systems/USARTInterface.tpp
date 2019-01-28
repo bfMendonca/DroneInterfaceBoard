@@ -17,7 +17,7 @@ USARTInterface< Tx_Size, Rx_Size >::USARTInterface( UART_HandleTypeDef * huart )
 		m_inputBuffer(),
 		m_outputBuffer() {
 
-	HAL_UART_Receive_DMA( m_huart, m_dmaInputBuffer, Rx_Size );
+	HAL_UART_Receive_DMA( m_huart, m_dmaInputBuffer, RX_DMA_SIZE );
 }
 
 template< size_t Tx_Size, size_t Rx_Size >
@@ -64,6 +64,22 @@ bool USARTInterface< Tx_Size, Rx_Size >::appendDataToSend( const uint8_t *data, 
 }
 
 template< size_t Tx_Size, size_t Rx_Size >
+bool USARTInterface< Tx_Size, Rx_Size >::getReceivedData( uint8_t *data, size_t &size, size_t maxSizeToRead ) {
+
+	m_inputBuffer.size() <= maxSizeToRead ? size = maxSizeToRead : size = m_inputBuffer.size();
+
+	for( size_t i = 0; i < size; ++i ) {
+
+		if( !m_inputBuffer.get( data[i] ) ) {
+			size = (i+1);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+template< size_t Tx_Size, size_t Rx_Size >
 void USARTInterface< Tx_Size, Rx_Size >::txCallback() {
 	//Let's check if we have more data to send
 
@@ -91,7 +107,13 @@ void USARTInterface< Tx_Size, Rx_Size >::txCallback() {
 }
 
 template< size_t Tx_Size, size_t Rx_Size >
-void USARTInterface< Tx_Size, Rx_Size >::rxCallbacl() {
+void USARTInterface< Tx_Size, Rx_Size >::rxCallback() {
+
+	uint8_t *received = m_huart->pRxBuffPtr;
+
+	for( size_t i = 0; i < RX_DMA_SIZE; ++i ) {
+		m_inputBuffer.put( received[i] );
+	}
 
 }
 

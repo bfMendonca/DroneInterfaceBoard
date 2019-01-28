@@ -14,6 +14,7 @@
 
 namespace Comm {
 
+
 template< size_t Tx_Size, size_t Rx_Size >
 class USARTInterface {
 public:
@@ -22,8 +23,10 @@ public:
 
 	bool appendDataToSend( const uint8_t *data, size_t size );
 
+	bool getReceivedData( uint8_t *data, size_t &size, size_t maxSizeToRead = Rx_Size );
+
 	void txCallback();
-	void rxCallbacl();
+	void rxCallback();
 
 	void usartErrorCallback();
 
@@ -33,8 +36,8 @@ private:
 
 	bool m_txOngoing;
 
-	Containers::CircularQueue<uint8_t, 150> m_inputBuffer;
-	Containers::CircularQueue<uint8_t, 150> m_outputBuffer;
+	Containers::CircularQueue<uint8_t, Rx_Size> m_inputBuffer;
+	Containers::CircularQueue<uint8_t, Tx_Size> m_outputBuffer;
 
 	//DMA Buffer. This is a mid layer dma buffers for handling data
 	static const size_t TX_DMA_SIZE = 50;
