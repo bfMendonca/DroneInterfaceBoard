@@ -57,6 +57,7 @@ bool USARTInterface< Tx_Size, Rx_Size >::appendDataToSend( const uint8_t *data, 
 
 		HAL_UART_Transmit_DMA( m_huart, m_dmaOutputBuffer, toSendDataSize );
 
+		HAL_GPIO_WritePin(TRANSMISSION_END_GPIO_Port, TRANSMISSION_END_Pin, GPIO_PIN_SET);
 		m_txOngoing = true;
 	}
 
@@ -102,7 +103,9 @@ void USARTInterface< Tx_Size, Rx_Size >::txCallback() {
 
 		m_txOngoing = true;
 	}else {
-		m_txOngoing = false;	
+		m_txOngoing = false;
+		
+		HAL_GPIO_WritePin(TRANSMISSION_END_GPIO_Port, TRANSMISSION_END_Pin, GPIO_PIN_RESET);
 	}
 }
 

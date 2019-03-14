@@ -3,7 +3,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "crc.h"
 #include "dma.h"
 #include "spi.h"
 #include "tim.h"
@@ -46,7 +45,7 @@
 
 Sensors::MPU6500 *m_mpu6500 = nullptr;
 Sensors::HMC5983 *m_hmc5983 = nullptr;
-Comm::USARTInterface<100, 100> *m_interface = nullptr;
+Comm::USARTInterface<150, 150> *m_interface = nullptr;
 Comm::USARTMessageDecoder *m_decoder = nullptr;
 
 uint8_t mpuPrescalerSender = 0x00;
@@ -125,7 +124,6 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
-  MX_CRC_Init();
   MX_TIM2_Init();
   MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
@@ -139,7 +137,7 @@ int main(void)
   m_mpu6500 = new Sensors::MPU6500( hspi1,  MPU6500_CS_GPIO_Port, MPU6500_CS_Pin );
   m_hmc5983 = new Sensors::HMC5983( hspi1, HCM5883L_CS_GPIO_Port, HCM5883L_CS_Pin );
 
-  m_interface = new Comm::USARTInterface<100, 100>( &huart2 );
+  m_interface = new Comm::USARTInterface<150, 150>( &huart2 );
   m_decoder = new Comm::USARTMessageDecoder();
 
   m_mpu6500->startReading();
@@ -187,13 +185,12 @@ void SystemClock_Config(void)
 
   /**Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
-  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV5;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -225,7 +222,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		++magPrescalerSender;
 		++joystickPrescalerSender;
 
-		if( mpuPrescalerSender == 11 ) {
+		if( mpuPrescalerSender == 2 ) {
 			size_t message_length = 0x00;
 
 			mpuPrescalerSender = 0x00;
@@ -261,9 +258,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			gyroBuffer[ message_length++ ] = '\0';
 
 			m_interface->appendDataToSend( gyroBuffer, message_length );
+
+			return;
 		}
 
-		if( magPrescalerSender == 50 ) {
+		if( magPrescalerSender >= 5 ) {
 			size_t message_length = 0x00;
 			magPrescalerSender = 0x00;
 
@@ -294,9 +293,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			magBuffer[ message_length++ ] = '\0';
 
 			m_interface->appendDataToSend( magBuffer, message_length );
+
+			return;
 		}
 
-		if( joystickPrescalerSender == 220 ) {
+		if( joystickPrescalerSender >= 20 ) {
+
+			joystickPrescalerSender = 0;
+
 			size_t message_length = 0x00;
 			joystickStream = pb_ostream_from_buffer( josystickBuffer+4, 50 );
 			pb_encode( &joystickStream, JoystickReadings_fields, &joystickMessage );
@@ -315,7 +319,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			josystickBuffer[ message_length++ ] = '\0';
 
 			m_interface->appendDataToSend( josystickBuffer, message_length );
+
+			return;
 		}
+
+
 	}
 }
 

@@ -40,8 +40,8 @@ private:
 	Containers::CircularQueue<uint8_t, Tx_Size> m_outputBuffer;
 
 	//DMA Buffer. This is a mid layer dma buffers for handling data
-	static const size_t TX_DMA_SIZE = 50;
-	static const size_t RX_DMA_SIZE = 50;
+	static const size_t TX_DMA_SIZE = 100;
+	static const size_t RX_DMA_SIZE = 100;
 
 	uint8_t m_dmaOutputBuffer[ TX_DMA_SIZE ];
 	uint8_t m_dmaInputBuffer[ RX_DMA_SIZE ];
