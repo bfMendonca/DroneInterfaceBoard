@@ -75,7 +75,7 @@ uint8_t motorInputBuffer[50];
 pb_istream_t motorInterface = pb_istream_from_buffer( motorInputBuffer, 50 );
 MotorsInterfaceMessage motorsInterfaceMessage = MotorsInterfaceMessage_init_zero;
 
-
+void motorMessageCallback( float m1, float m2, float m3, float m4 );
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -140,6 +140,9 @@ int main(void)
   m_interface = new Comm::USARTInterface<150, 150>( &huart2 );
   m_decoder = new Comm::USARTMessageDecoder();
 
+  //Adicionado os callbacks ao decoder
+  m_decoder->setMotorMessageCallback( &motorMessageCallback );
+
   m_mpu6500->startReading();
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   if (HAL_SPI_Init(&hspi1) != HAL_OK) {
@@ -166,7 +169,15 @@ int main(void)
   HAL_TIM_IC_Start_IT( &htim3, TIM_CHANNEL_2 );
 
   while(true) {
+	  //Motores devem permanecer desligados
+		if( joystickMessage.channel3Reading > 1850 ) {
+			htim1.Instance->CCR1 = round( 1500 );
+			htim1.Instance->CCR2 = round( 1500 );
+			htim1.Instance->CCR3 = round( 1500 );
+			htim1.Instance->CCR4 = round( 1500 );
+		}
 
+		HAL_Delay( 50 );
   }
     /* USER CODE END WHILE */
 
@@ -210,6 +221,50 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void motorMessageCallback( float m1, float m2, float m3, float m4 ) {
+	if( m1 > 100.0 ) {
+		m1 = 100.0;
+	}else if( m1 < 0.0 ) {
+		m1 = 0.0;
+	}
+
+	if( m2 > 100.0 ) {
+		m2 = 100.0;
+	}else if( m2 < 0.0 ) {
+		m2 = 0.0;
+	}
+
+	if( m3 > 100.0 ) {
+		m3 = 100.0;
+	}else if( m3 < 0.0 ) {
+		m3 = 0.0;
+	}
+
+	if( m4 > 100.0 ) {
+		m4 = 100.0;
+	}else if( m4 < 0.0 ) {
+		m4 = 0.0;
+	}
+
+	static constexpr float a = 5.0;
+	static constexpr float b = 1500.0;
+
+	//Os valores estão entre zero até 100, convertendo em período para o DC
+
+	if( joystickMessage.channel3Reading < 1850 ) {
+		htim1.Instance->CCR1 = round(m1*a + b);
+		htim1.Instance->CCR2 = round(m2*a + b);
+		htim1.Instance->CCR3 = round(m3*a + b);
+		htim1.Instance->CCR4 = round(m4*a + b);
+	}else {
+		htim1.Instance->CCR1 = round(b);
+		htim1.Instance->CCR2 = round(b);
+		htim1.Instance->CCR3 = round(b);
+		htim1.Instance->CCR4 = round(b);
+	}
+
+}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if( htim == &htim14 ) {

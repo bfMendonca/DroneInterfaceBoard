@@ -27,6 +27,10 @@ public:
 
 	bool appendDataToDecode( uint8_t value[], size_t size );
 
+	void setMotorMessageCallback( void (*callback)( float, float, float, float) ) {
+		m_motorMessageCallback = callback;
+	}
+
 private:
 	uint8_t m_decodeBuffer[100];
 	size_t m_writeIndex;
@@ -41,6 +45,8 @@ private:
 		uint8_t type;
 		uint8_t data[100];
 	} m_currentMessage;
+
+	void (*m_motorMessageCallback)( float, float, float, float);
 
 };
 

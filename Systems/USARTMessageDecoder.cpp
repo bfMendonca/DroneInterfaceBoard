@@ -11,7 +11,8 @@ namespace Comm {
 
 USARTMessageDecoder::USARTMessageDecoder() :
 		m_writeIndex( 0 ),
-		m_messageStarted( false ) {
+		m_messageStarted( false ),
+		m_motorMessageCallback( nullptr ) {
 	// TODO Auto-generated constructor stub
 
 }
@@ -59,7 +60,20 @@ bool USARTMessageDecoder::appendDataToDecode( uint8_t value[], size_t size ) {
 						bool status = pb_decode( &motorsStream, MotorsInterfaceMessage_fields, &motorsInterface );
 
 						if( status ) {
-							//Success, need to warn the callback
+
+							float m1 = motorsInterface.motor1DC;
+							float m2 = motorsInterface.motor2Dc;
+							float m3 = motorsInterface.motor3DC;
+							float m4 = motorsInterface.motor4DC;
+
+							if( m_motorMessageCallback != nullptr ) {
+								m_motorMessageCallback( m1, m2, m3, m4 );
+							}else {
+								static uint8_t data;
+								++data;
+							}
+
+
 						}
 					}
 						break;
