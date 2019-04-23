@@ -39,13 +39,13 @@ MPU6500::MPU6500( SPI_HandleTypeDef &spi, GPIO_TypeDef *csPort, uint16_t csPin )
 		//LEt's set some default config and let the driver "halted", ie, it will not retrieve data while the user
 		//has not, explicitly, called the started method. This is just to ensure the user to change the SPI Speed before, to
 		//make the throughput faster
-		setFullScaleGyroRange( SCALE_250_DPS );
-		setFullScaleAccelRange( SCALE_2_G );
+		setFullScaleGyroRange( SCALE_2000_DPS );
+		setFullScaleAccelRange( SCALE_8_G );
 
 		//Let's configure the Filters and, with that, calc the output rate.
 		//this config is default. It can be changed later
-		setGyroRateAndLPF( GYRO_USE_LPF, GYRO_LPF_184_HZ, 0  );
-		setAccelRateAndLPF( ACCEL_USE_LPF, ACCEL_LPF_184_HZ );
+		setGyroRateAndLPF( GYRO_USE_LPF, GYRO_LPF_41_HZ, 1  );
+		setAccelRateAndLPF( ACCEL_USE_LPF, ACCEL_LPF_5_HZ );
 
 		//Just for testing
 		setStandbyXAccelEnabled( false );
